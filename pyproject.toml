@@ -5,6 +5,9 @@ description = "Deterministic CLI tool that composes four pipeline launches from 
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+mission-compiler = "mission_compiler.cli:main"
+
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
