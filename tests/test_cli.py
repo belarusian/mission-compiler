@@ -258,3 +258,112 @@ def test_cli_no_validate_output_byte_identical_to_plain(capsys):
     out = capsys.readouterr().out
     expected = compose("Build it.", spoke="project-setup").render()
     assert expected in out
+
+
+# ---------------------------------------------------------------------------
+# Cycle 8, TICKET-020 (issue #26): CLI flag-matrix + path override flow-through.
+# Additive tests only; default behavior byte-identical.
+# ---------------------------------------------------------------------------
+
+import subprocess  # noqa: E402
+
+FIVE_HEADERS = (
+    "[1] GOAL",
+    "[2] INNER SPOKE COMMAND",
+    "[3] BOUNDS",
+    "[4] SEED SCAFFOLD",
+    "[5] NOHUP LAUNCH SCRIPT",
+)
+
+
+def test_cli_flag_matrix_cycle_validate_write_valid(tmp_path, capsys):
+    # Full flag matrix: cycle spoke + explicit cycle + validate + write.
+    script = tmp_path / "launch.sh"
+    rc = main(
+        [
+            "compose", "Run cycle 5.",
+            "--spoke", "cycle-implementation",
+            "--cycle", "5",
+            "--project-dir", str(tmp_path),
+            "--script-path", str(script),
+            "--validate",
+            "--write",
+        ]
+    )
+    assert rc == 0
+    assert script.exists()
+    result = subprocess.run(
+        ["bash", "-n", str(script)], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    out = capsys.readouterr().out
+    for header in FIVE_HEADERS:
+        assert header in out
+
+
+def test_cli_flag_matrix_deterministic_stdout(capsys):
+    args = [
+        "compose", "Run cycle 5.",
+        "--spoke", "cycle-implementation",
+        "--cycle", "5",
+        "--validate",
+    ]
+    main(args)
+    first = capsys.readouterr().out
+    main(args)
+    second = capsys.readouterr().out
+    assert first == second
+
+
+def test_cli_name_override_flows_through_all_sections(capsys):
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--name", "fourseer",
+            "--spoke", "project-setup",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    # name flows into GOAL, the scaffold (runner-prompt/briefing paths), and the
+    # launch script / nohup command.
+    assert "Project: fourseer" in out
+    assert "fourseer-cycle-runner-prompt.md" in out  # scaffold references it
+    assert "launch-fourseer.sh" in out  # nohup command + script path
+    for header in FIVE_HEADERS:
+        assert header in out
+
+
+def test_cli_project_dir_and_ai_dir_flow_through_all_sections(capsys):
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--project-dir", "/tmp/proj",
+            "--ai-dir", "/tmp/ai",
+            "--spoke", "cycle-implementation",
+            "--cycle", "5",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    # project_dir flows into GOAL, inner command, scaffold, and launch script.
+    assert "Project dir: /tmp/proj" in out
+    assert "--project-dir /tmp/proj" in out
+    assert "/tmp/proj/launch-" in out
+    # ai_dir flows into GOAL, inner command, and launch script (not the
+    # scaffold section, which is rooted at project_dir).
+    assert "AI dir: /tmp/ai" in out
+    assert "--log /tmp/ai/cycle-001-mission-compiler-gate.md" in out
+    assert "/tmp/ai/trajectories" in out
+    for header in FIVE_HEADERS:
+        assert header in out
+
+
+def test_cli_default_behavior_byte_identical(capsys):
+    # No overrides: output must be byte-identical to a plain compose render.
+    from mission_compiler.compose import compose
+
+    main(["compose", "Build it.", "--spoke", "project-setup"])
+    out = capsys.readouterr().out
+    expected = compose("Build it.", spoke="project-setup").render()
+    assert expected in out

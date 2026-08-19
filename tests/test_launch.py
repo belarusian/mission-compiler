@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pytest
 import subprocess
 import tempfile
 
@@ -360,3 +361,52 @@ def test_very_long_single_line_goal_preserved_and_bash_n():
     # No truncation, no wrapping: the exact goal bytes appear as one contiguous run.
     assert goal in a
     _bash_n_ok(a)
+
+
+# --- Cycle 8, TICKET-019 (issue #25): launch-script self-test hardening ------
+# Additive tests pinning the exact gaps the Build Order row calls out:
+#   * validate_launch_script accepts the REAL builder output for BOTH spoke
+#     types using REAL bounds from bounds_for(spoke) and returns None;
+#   * validate_launch_script rejects a known-bad script with ValueError("bash -n");
+#   * build_launch_script is byte-identical (encoded bytes) across equal inputs
+#     for BOTH spoke types.
+
+def _real_inner(spoke: str):
+    bounds = bounds_for(spoke)
+    if spoke == "project-setup":
+        return build_setup_command(
+            goal="g", name="n", project_dir="/p", ai_dir="/a", cycles=1,
+            repo=None, seed=None,
+        )
+    return build_cycle_command(
+        runner_prompt="/a/runner.md", log="/a/log.md", project_dir="/p",
+        cycle=3, max_steps=bounds.inner_max_steps, briefing="/a/brief.md",
+        trajectories="/a/traj",
+    )
+
+
+def _real_script(spoke: str) -> str:
+    return build_launch_script(
+        goal="g", inner=_real_inner(spoke), bounds=bounds_for(spoke),
+        log="/a/log.md", trajectories="/a/traj", project_dir="/p", name="n",
+    )
+
+
+def test_validate_accepts_real_builder_output_both_spokes():
+    # Real builder output + real bounds (bounds_for), not hand-typed numbers.
+    assert validate_launch_script(_real_script("project-setup")) is None
+    assert validate_launch_script(_real_script("cycle-implementation")) is None
+
+
+def test_validate_rejects_known_bad_script_bash_n():
+    with pytest.raises(ValueError, match="bash -n"):
+        validate_launch_script("#!/bin/bash\nif then fi\n")
+
+
+def test_build_launch_script_byte_identical_both_spokes():
+    for spoke in ("project-setup", "cycle-implementation"):
+        a = _real_script(spoke)
+        b = _real_script(spoke)
+        assert a == b
+        # Byte-level determinism, not just str equality.
+        assert a.encode("utf-8") == b.encode("utf-8")
