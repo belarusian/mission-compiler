@@ -66,10 +66,11 @@ This prints all five sections: [1] GOAL (v3 deltas inline), [2] INNER SPOKE COMM
 
 ## Runnable examples
 
-Two byte-deterministic, runnable examples live under examples/:
+Three byte-deterministic, runnable examples live under examples/:
 
     bash examples/compose-fourseer.sh   # composes the fourseer project
     bash examples/compose-fleet.sh      # composes the fleet project
+    bash examples/compose-config.sh     # composes with --config single-llm-long-pass (LLM-bounds axis)
 
 Each composes a real project with a representative seed + seed-spec, writes the launch script to a fixed throwaway path, runs bash -n on it, and prints the rendered launch. Output is byte-identical across runs (no timestamps/randomness).
 
