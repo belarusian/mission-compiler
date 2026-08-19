@@ -174,3 +174,68 @@ def test_launch_script_byte_deterministic_across_runs():
     assert a == b
     # Byte-identical, not just equal-as-str: compare encoded bytes too.
     assert a.encode("utf-8") == b.encode("utf-8")
+
+
+# --- End-to-end launch-script self-test (TICKET-008) -------------------------
+# Mirrors exactly what the CLI does when it writes a launch file: build a full
+# script, write it to a real temp file, run `bash -n` on that file, and assert
+# the nohup wrapper references the correct path. Covers BOTH spoke types using
+# REAL bounds from the proven table (bounds_for), not hand-typed numbers.
+
+from mission_compiler.bounds import bounds_for  # noqa: E402
+
+
+def _e2e_inner(spoke: str):
+    if spoke == "project-setup":
+        return build_setup_command(
+            goal="g", name="n", project_dir="/p", ai_dir="/a", cycles=1,
+            repo=None, seed=None,
+        )
+    return build_cycle_command(
+        runner_prompt="/a/runner.md", log="/a/log.md", project_dir="/p",
+        cycle=3, max_steps=bounds_for(spoke).inner_max_steps,
+        briefing="/a/brief.md", trajectories="/a/traj",
+    )
+
+
+def _e2e_build_and_bash_n(spoke: str) -> None:
+    """Build a full script for ``spoke``, write to temp file, run `bash -n`."""
+    bounds = bounds_for(spoke)
+    script = build_launch_script(
+        goal="g", inner=_e2e_inner(spoke), bounds=bounds, log="/a/log.md",
+        trajectories="/a/traj", project_dir="/p", name="n",
+    )
+    fd, path = tempfile.mkstemp(prefix=f"mc-e2e-{spoke}-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(script)
+        result = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
+        assert result.returncode == 0, (spoke, result.stderr)
+    finally:
+        os.unlink(path)
+
+
+def test_e2e_setup_script_written_and_bash_n_passes():
+    _e2e_build_and_bash_n("project-setup")
+
+
+def test_e2e_cycle_script_written_and_bash_n_passes():
+    _e2e_build_and_bash_n("cycle-implementation")
+
+
+def _assert_nohup_references_path(script_path: str) -> None:
+    cmd = build_nohup_command(script_path)
+    assert cmd.startswith(f"nohup bash {script_path}")
+    assert f"> {script_path}.out" in cmd
+    assert cmd.endswith("&")
+
+
+def test_e2e_nohup_references_correct_path_setup():
+    # The same path the CLI uses when it writes the launch file.
+    script_path = "/p/launch-n.sh"
+    _assert_nohup_references_path(script_path)
+
+
+def test_e2e_nohup_references_correct_path_cycle():
+    script_path = "/p/launch-n.sh"
+    _assert_nohup_references_path(script_path)

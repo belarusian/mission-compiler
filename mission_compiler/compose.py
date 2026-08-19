@@ -20,7 +20,11 @@ from dataclasses import dataclass
 
 from .bounds import Bounds, bounds_for
 from .goal import compose_goal
-from .launch import build_launch_script, build_nohup_command
+from .launch import (
+    build_launch_script,
+    build_nohup_command,
+    validate_launch_script,
+)
 from .seed_scaffold import SeedScaffold, build_seed_scaffold
 from .spoke_cmd import SpokeCommand, build_cycle_command, build_setup_command
 
@@ -94,6 +98,7 @@ def compose(
     ai_dir: str = DEFAULT_AI_DIR,
     cycle: int = 1,
     run_py: str = DEFAULT_RUN_PY,
+    validate: bool = False,
 ) -> ComposedLaunch:
     """Compose the complete launch invocation for ``mission``.
 
@@ -108,6 +113,10 @@ def compose(
         ai_dir: directory for the AI artifacts (log, runner prompt, briefing).
         cycle: cycle number (only used for the cycle-implementation spoke).
         run_py: path to the outer orchestrator.
+        validate: when True, run ``validate_launch_script`` on the composed
+            launch script before returning so an invalid script fails fast
+            (raises ``ValueError``). When False (the default) the behavior is
+            byte-identical to before this flag existed - no validation call.
 
     Raises:
         ValueError: if ``spoke`` is not a supported spoke type.
@@ -173,6 +182,10 @@ def compose(
     )
     nohup_command = build_nohup_command(script_path)
 
+    if validate:
+        # Fail fast: an invalid launch script must not be returned (or written).
+        validate_launch_script(launch_script)
+
     return ComposedLaunch(
         goal=goal,
         inner=inner,
@@ -182,3 +195,20 @@ def compose(
         nohup_command=nohup_command,
         spoke=spoke,
     )
+
+def validate_composed(launch: ComposedLaunch) -> None:
+    """Validate the composed launch script is syntactically valid bash.
+
+    Additive helper that runs ``validate_launch_script`` on
+    ``launch.launch_script``. It exists so callers (and tests) can validate a
+    fully-composed :class:`ComposedLaunch` without re-running the whole compose
+    path. Raises ``ValueError`` (containing "bash -n") if the script is not
+    valid bash; returns None when valid.
+
+    Args:
+        launch: a composed launch whose ``launch_script`` should be checked.
+
+    Raises:
+        ValueError: if the launch script fails ``bash -n``.
+    """
+    validate_launch_script(launch.launch_script)
