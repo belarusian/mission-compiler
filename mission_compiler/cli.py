@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 
-from .compose import SPOKES, compose
+from .compose import SPOKES, compose, validate_composed
 from .launch import validate_launch_script
 
 
@@ -95,6 +95,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write the launch script to --script-path (default: print only).",
     )
+    comp.add_argument(
+        "--validate",
+        action="store_true",
+        help=(
+            "Validate the composed launch script with `bash -n` before printing "
+            "or writing; fail fast (non-zero exit) if it is not valid bash. "
+            "Default off -> byte-identical behavior."
+        ),
+    )
     return parser
 
 
@@ -133,19 +142,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.command != "compose":
         parser.error(f"unknown command {args.command!r}")
 
-    launch = compose(
-        args.mission,
-        cycles=args.cycles,
-        repo=args.repo,
-        seed=args.seed,
-        spoke=args.spoke,
-        name=args.name,
-        project_dir=args.project_dir,
-        ai_dir=args.ai_dir,
-        cycle=args.cycle,
-        run_py=args.run_py,
-        seed_spec=parse_seed_spec(args.seed_spec) if args.seed_spec is not None else None,
-    )
+    try:
+        launch = compose(
+            args.mission,
+            cycles=args.cycles,
+            repo=args.repo,
+            seed=args.seed,
+            spoke=args.spoke,
+            name=args.name,
+            project_dir=args.project_dir,
+            ai_dir=args.ai_dir,
+            cycle=args.cycle,
+            run_py=args.run_py,
+            seed_spec=parse_seed_spec(args.seed_spec) if args.seed_spec is not None else None,
+        )
+    except ValueError as exc:
+        # Fail fast on a bad --seed-spec (e.g. non-object JSON).
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.validate:
+        try:
+            validate_composed(launch)
+        except ValueError as exc:
+            print(f"error: launch script failed validation: {exc}", file=sys.stderr)
+            return 2
 
     print(launch.render())
 
@@ -153,8 +174,12 @@ def main(argv: list[str] | None = None) -> int:
         # Fail fast: never write a launch script that is not valid bash.
         validate_launch_script(launch.launch_script)
         script_path = args.script_path or f"{args.project_dir}/launch-{args.name}.sh"
-        with open(script_path, "w", encoding="utf-8") as fh:
-            fh.write(launch.launch_script)
+        try:
+            with open(script_path, "w", encoding="utf-8") as fh:
+                fh.write(launch.launch_script)
+        except OSError as exc:
+            print(f"error: could not write launch script to {script_path}: {exc}", file=sys.stderr)
+            return 2
         print(f"\n[written] launch script -> {script_path}")
 
     return 0
