@@ -43,10 +43,11 @@ Both entry points are equivalent.
 | --seed-spec SPEC | Explicit seed spec: JSON {source: dest} or a comma-separated path list. When given, the scaffold plan is built from the general classifier instead of the fixed builder. | none |
 | --spoke {project-setup,cycle-implementation} | Spoke type. | project-setup |
 | --name NAME | Project / package name. | mission-compiler |
-| --project-dir DIR | Project repository directory. | cwd |
-| --ai-dir DIR | Directory for AI artifacts (log, runner prompt, briefing). | <project-dir>/../ai |
-| --cycle N | Cycle number (used by the cycle-implementation spoke). | none |
-| --run-py PATH | Path to the outer orchestrator (run.py). | auto |
+| --project-dir DIR | Project repository directory. | /home/sasha/AI/mission-compiler/proj |
+| --ai-dir DIR | Directory for AI artifacts (log, runner prompt, briefing). | /home/sasha/AI/mission-compiler/ai |
+| --cycle N | Cycle number (used by the cycle-implementation spoke). | 1 |
+| --run-py PATH | Path to the outer orchestrator (run.py). | /home/sasha/Research/four/run.py |
+| --config NAME | Select the proven-bounds row by LLM configuration instead of by spoke type (a key of `LLM_CONFIG_BOUNDS`: `2-llm-fast` / `single-llm-long-pass` / `setup`). | none (spoke-based) |
 | --script-path PATH | Where to write the launch script. | <project-dir>/launch-<name>.sh |
 | --write | Write the launch script to --script-path. | off (print only) |
 | --validate | Validate the composed launch script with bash -n before printing/writing; fail fast (non-zero exit) if invalid. | off (byte-identical behavior) |
