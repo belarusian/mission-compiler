@@ -14,6 +14,7 @@ import argparse
 import sys
 
 from .compose import SPOKES, compose
+from .launch import validate_launch_script
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     print(launch.render())
 
     if args.write:
+        # Fail fast: never write a launch script that is not valid bash.
+        validate_launch_script(launch.launch_script)
         script_path = args.script_path or f"{args.project_dir}/launch-{args.name}.sh"
         with open(script_path, "w", encoding="utf-8") as fh:
             fh.write(launch.launch_script)

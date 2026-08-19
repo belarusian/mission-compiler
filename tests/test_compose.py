@@ -65,3 +65,70 @@ def test_compose_goal_carries_v3_deltas():
     assert "Phase 5 ISSUE SWEEP" in launch.goal
     assert "BOUNDED POST-PLAN POLISH CLASS" in launch.goal
     assert "INCOMPLETE LOG NOTE" in launch.goal
+
+
+def test_compose_validate_true_accepts_valid_script():
+    # validate=True must pass for the real builder output on both spoke types.
+    setup = compose("Build it.", cycles=5, repo="o/r", seed="/s",
+                    spoke="project-setup", validate=True)
+    assert setup.launch_script.startswith("#!/bin/bash")
+    cycle = compose("Run cycle 3.", spoke="cycle-implementation", cycle=3,
+                    validate=True)
+    assert cycle.launch_script.startswith("#!/bin/bash")
+
+
+def test_compose_validate_false_is_default_and_unchanged():
+    # The flag only adds a check; it must never change the emitted bytes.
+    base = compose("Build it.", cycles=5, repo="o/r", seed="/s",
+                   spoke="project-setup")
+    validated = compose("Build it.", cycles=5, repo="o/r", seed="/s",
+                        spoke="project-setup", validate=True)
+    assert base.launch_script == validated.launch_script
+    assert base.render() == validated.render()
+
+
+def test_compose_validate_raises_on_bad_script():
+    # The additive helper must surface a bash -n failure as ValueError.
+    from mission_compiler.compose import ComposedLaunch, validate_composed
+
+    bad = ComposedLaunch(
+        goal="g",
+        inner=base_inner(),
+        bounds=base_bounds(),
+        seed_scaffold=base_scaffold(),
+        launch_script="if then fi\n",
+        nohup_command="nohup bash /p/launch-n.sh > /p/launch-n.sh.out 2>&1 &",
+        spoke="project-setup",
+    )
+    with pytest.raises(ValueError, match="bash -n"):
+        validate_composed(bad)
+
+
+def test_validate_composed_accepts_real_launch():
+    from mission_compiler.compose import validate_composed
+
+    launch = compose("Build it.", cycles=5, repo="o/r", seed="/s",
+                     spoke="project-setup")
+    assert validate_composed(launch) is None
+
+
+def base_inner():
+    from mission_compiler.spoke_cmd import build_setup_command
+
+    return build_setup_command(
+        goal="g", name="n", project_dir="/p", ai_dir="/a", cycles=1,
+        repo=None, seed=None,
+    )
+
+
+def base_bounds():
+    from mission_compiler.bounds import Bounds
+
+    return Bounds(outer_wall=1800, inner_seconds=1500, outer_steps=20,
+                  inner_max_steps=60)
+
+
+def base_scaffold():
+    from mission_compiler.seed_scaffold import build_seed_scaffold
+
+    return build_seed_scaffold(seed=None, project_dir="/p", name="n", ai_dir="/a")
