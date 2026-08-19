@@ -63,3 +63,75 @@ def test_goal_strips_mission_whitespace():
         name="n",
     )
     assert "Mission: padded mission" in g
+
+
+# --- TICKET-002: per-spoke delta coverage + byte-level determinism --------
+
+#: The four v3 delta markers that must appear in every composed GOAL.
+_DELTA_MARKERS = (
+    "Phase 0 PRE-FLIGHT",
+    "Phase 5 ISSUE SWEEP",
+    "BOUNDED POST-PLAN POLISH CLASS",
+    "INCOMPLETE LOG NOTE",
+)
+
+
+def _goal_for_spoke(spoke: str) -> str:
+    return compose_goal(
+        "Build the mission compiler.",
+        spoke=spoke,
+        cycles=12,
+        repo="belarusian/mission-compiler",
+        seed="/home/sasha/Research/four",
+        project_dir="/home/sasha/AI/mission-compiler/proj",
+        ai_dir="/home/sasha/AI/mission-compiler/ai",
+        name="mission-compiler",
+    )
+
+
+def test_goal_deltas_present_for_project_setup():
+    g = _goal_for_spoke("project-setup")
+    for marker in _DELTA_MARKERS:
+        assert marker in g
+
+
+def test_goal_deltas_present_for_cycle_implementation():
+    g = _goal_for_spoke("cycle-implementation")
+    for marker in _DELTA_MARKERS:
+        assert marker in g
+
+
+def test_goal_spoke_field_echoed_per_spoke():
+    assert "Spoke: project-setup" in _goal_for_spoke("project-setup")
+    assert "Spoke: cycle-implementation" in _goal_for_spoke("cycle-implementation")
+
+
+def test_goal_byte_identical_across_processes(tmp_path):
+    """Two separate interpreter invocations must emit byte-identical GOAL text.
+
+    Stronger than same-process equality: it rules out hidden state or ordering
+    nondeterminism leaking into the composed output. Inputs are fixed (no
+    timestamps, no randomness).
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "from mission_compiler.goal import compose_goal; "
+        "print(compose_goal('Build the mission compiler.', spoke='project-setup', "
+        "cycles=12, repo='belarusian/mission-compiler', "
+        "seed='/home/sasha/Research/four', "
+        "project_dir='/home/sasha/AI/mission-compiler/proj', "
+        "ai_dir='/home/sasha/AI/mission-compiler/ai', "
+        "name='mission-compiler'), end='')"
+    )
+    out_a = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, check=True
+    ).stdout
+    out_b = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, check=True
+    ).stdout
+    assert out_a == out_b
+    # Sanity: the output is non-trivial and carries the deltas.
+    for marker in _DELTA_MARKERS:
+        assert marker.encode() in out_a
