@@ -120,19 +120,30 @@ def parse_seed_spec(value: str) -> dict[str, str] | list[str]:
     """Parse a ``--seed-spec`` value into a seed spec.
 
     A value starting with ``{`` is parsed as JSON and must be a mapping of
-    string to string (returns ``dict[str, str]``). Any other value is treated as
-    a comma-separated path list: split on commas, strip surrounding whitespace,
+    string to string (returns ``dict[str, str]``). A value starting with ``[``
+    is parsed as JSON and must be a list of strings: each element is stripped
+    and empty tokens are dropped (returns ``list[str]``) - the same capability
+    as the comma-list form, in JSON spelling. Any other value is treated as a
+    comma-separated path list: split on commas, strip surrounding whitespace,
     drop empty tokens (returns ``list[str]``).
 
     Raises:
-        ValueError: if the JSON value is not an object, or any key/value is not a
-            string.
+        ValueError: if the JSON object has a non-string key/value, or the JSON
+            list contains a non-string element.
     """
     stripped = value.strip()
     if stripped.startswith("{") or stripped.startswith("["):
         data = json.loads(stripped)
+        if isinstance(data, list):
+            # JSON list form: the natural JSON spelling of a path list (the same
+            # capability the comma-list form below provides). Validate that every
+            # element is a string, then strip + drop empties exactly like the
+            # comma-list path so both spellings round-trip identically.
+            if not all(isinstance(item, str) for item in data):
+                raise ValueError("seed-spec JSON list elements must be strings")
+            return [item.strip() for item in data if item.strip()]
         if not isinstance(data, dict):
-            raise ValueError("seed-spec JSON must be an object {source: dest}")
+            raise ValueError("seed-spec JSON must be an object {source: dest} or a list of paths")
         out: dict[str, str] = {}
         for k, v in data.items():
             if not isinstance(k, str) or not isinstance(v, str):
