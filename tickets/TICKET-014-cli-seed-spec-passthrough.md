@@ -8,7 +8,7 @@ The composed launch's scaffold plan must reflect the classified entries.
 
 - New flag on the `compose` subparser: `--seed-spec` (default None).
 - A small pure parser `parse_seed_spec(value: str) -> dict[str,str] | list[str]`:
-  - value starting with `{` -> `json.loads` (must be a mapping of str->str);
+  - value starting with `{` or `[` -> `json.loads` (must be a mapping of str->str);
   - otherwise -> split on commas, strip whitespace, drop empties -> list.
 - Default behavior (no flag) is byte-identical to before.
 
