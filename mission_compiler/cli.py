@@ -86,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the outer orchestrator (run.py).",
     )
     comp.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "Select the proven-bounds row by LLM configuration instead of by spoke "
+            "type (a key of LLM_CONFIG_BOUNDS: 2-llm-fast / single-llm-long-pass / "
+            "setup). Default off -> byte-identical behavior."
+        ),
+    )
+    comp.add_argument(
         "--script-path",
         default=None,
         help="Where to write the launch script (default: <project-dir>/launch-<name>.sh).",
@@ -154,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             ai_dir=args.ai_dir,
             cycle=args.cycle,
             run_py=args.run_py,
+            config=args.config,
             seed_spec=parse_seed_spec(args.seed_spec) if args.seed_spec is not None else None,
         )
     except ValueError as exc:

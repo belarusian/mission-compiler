@@ -410,3 +410,25 @@ def test_build_launch_script_byte_identical_both_spokes():
         assert a == b
         # Byte-level determinism, not just str equality.
         assert a.encode("utf-8") == b.encode("utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Cycle 10, TICKET-026 (issue #34): build_nohup_command unit coverage.
+# ---------------------------------------------------------------------------
+
+
+def test_build_nohup_command_exact_shape():
+    cmd = build_nohup_command("/tmp/proj/launch-fourseer.sh")
+    assert cmd == "nohup bash /tmp/proj/launch-fourseer.sh > /tmp/proj/launch-fourseer.sh.out 2>&1 &"
+
+
+def test_build_nohup_command_is_pure_function_of_input():
+    # Same input -> same output; different input -> different output.
+    assert build_nohup_command("/a/b.sh") == build_nohup_command("/a/b.sh")
+    assert build_nohup_command("/a/b.sh") != build_nohup_command("/c/d.sh")
+
+
+def test_build_nohup_command_byte_identical():
+    a = build_nohup_command("/tmp/x/launch.sh")
+    b = build_nohup_command("/tmp/x/launch.sh")
+    assert a.encode("utf-8") == b.encode("utf-8")

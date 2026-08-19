@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .bounds import Bounds, bounds_for
+from .bounds import Bounds, bounds_for, bounds_for_config
 from .goal import compose_goal
 from .launch import (
     build_launch_script,
@@ -143,6 +143,7 @@ def compose(
     ai_dir: str = DEFAULT_AI_DIR,
     cycle: int = 1,
     run_py: str = DEFAULT_RUN_PY,
+    config: str | None = None,
     validate: bool = False,
 ) -> ComposedLaunch:
     """Compose the complete launch invocation for ``mission``.
@@ -162,6 +163,11 @@ def compose(
         ai_dir: directory for the AI artifacts (log, runner prompt, briefing).
         cycle: cycle number (only used for the cycle-implementation spoke).
         run_py: path to the outer orchestrator.
+        config: optional LLM-config name (a key of ``LLM_CONFIG_BOUNDS``, e.g.
+            ``2-llm-fast`` / ``single-llm-long-pass`` / ``setup``). When given, the
+            proven bounds are selected via ``bounds_for_config(config)`` instead of
+            by spoke type; when None (the default) the behavior is byte-identical to
+            before this param existed. An unknown config raises ``ValueError``.
         validate: when True, run ``validate_launch_script`` on the composed
             launch script before returning so an invalid script fails fast
             (raises ``ValueError``). When False (the default) the behavior is
@@ -173,7 +179,12 @@ def compose(
     if spoke not in SPOKES:
         raise ValueError(f"unknown spoke {spoke!r}; supported: {', '.join(SPOKES)}")
 
-    bounds = bounds_for(spoke)
+    if config is None:
+        bounds = bounds_for(spoke)
+    else:
+        # Opt-in: select the proven-bounds row by LLM configuration instead of
+        # by spoke type. Default (config=None) stays byte-identical to before.
+        bounds = bounds_for_config(config)
     goal = compose_goal(
         mission,
         spoke=spoke,
