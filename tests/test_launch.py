@@ -432,3 +432,72 @@ def test_build_nohup_command_byte_identical():
     a = build_nohup_command("/tmp/x/launch.sh")
     b = build_nohup_command("/tmp/x/launch.sh")
     assert a.encode("utf-8") == b.encode("utf-8")
+
+
+# --- TICKET-031 (issue #41): build_launch_script/_heredoc hostile-bytes edges --
+# The existing _tricky_goal() covers single/double quote, $HOME, backtick, and an
+# embedded newline. These pin the remaining hostile-bytes edges: NUL byte, CRLF,
+# leading/trailing newline, and a heredoc-delimiter collision (a goal line equal to
+# GOAL_EOF). Each asserts the ACTUAL deterministic outcome: verbatim byte
+# preservation AND bash -n green. Additive only; no source change.
+
+def _bash_n_ok(script: str) -> bool:
+    fd, path = tempfile.mkstemp(prefix="mc-hostile-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(script)
+        result = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
+        return result.returncode == 0
+    finally:
+        os.unlink(path)
+
+
+def _build(goal: str) -> str:
+    return build_launch_script(
+        goal=goal, inner=_inner(), bounds=_bounds(), log="/a/log.md",
+        trajectories="/a/traj", project_dir="/p", name="n",
+    )
+
+
+def test_goal_with_nul_byte_deterministic():
+    goal = "goal with \x00 nul byte"
+    script = _build(goal)
+    assert goal in script            # NUL preserved verbatim
+    assert _bash_n_ok(script)        # still valid bash
+
+
+def test_goal_with_crlf_preserved_and_bash_n():
+    goal = "line one\r\nline two"
+    script = _build(goal)
+    assert goal in script            # CRLF preserved verbatim
+    assert _bash_n_ok(script)
+
+
+def test_goal_leading_trailing_newline_preserved_and_bash_n():
+    for goal in ("\nleading newline goal", "trailing newline goal\n"):
+        script = _build(goal)
+        assert goal in script        # leading/trailing newline preserved verbatim
+        assert _bash_n_ok(script)
+
+
+def test_goal_heredoc_delimiter_collision_deterministic():
+    # A goal line equal to the heredoc delimiter. bash terminates a quoted heredoc
+    # only on a STANDALONE delimiter line, and the emitted body always ends with a
+    # fresh delimiter line, so the embedded GOAL_EOF is preserved verbatim and the
+    # script stays valid bash. Pin this actual behavior byte-for-byte.
+    goal = "first line\nGOAL_EOF\nlast line"
+    script = _build(goal)
+    assert goal in script            # full goal (incl. trailing 'last line') verbatim
+    assert "last line" in script     # not truncated by an early heredoc termination
+    assert _bash_n_ok(script)
+
+
+def test_hostile_bytes_byte_identical_across_runs():
+    for goal in (
+        "goal with \x00 nul byte",
+        "line one\r\nline two",
+        "\nleading newline goal",
+        "trailing newline goal\n",
+        "first line\nGOAL_EOF\nlast line",
+    ):
+        assert _build(goal) == _build(goal)

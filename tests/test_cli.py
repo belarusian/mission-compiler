@@ -423,3 +423,51 @@ def test_cli_seed_spec_json_list_reflects_create_entries(capsys):
     assert "[create]" in first
     assert "pkg/mod.py" in first
     assert "docs/README.md" in first
+
+
+# --- TICKET-030 (issue #40): CLI with EVERY flag combined end-to-end ----------
+# One argv sets every compose flag at once, including the two opt-in axes that are
+# each tested in isolation but never together: --seed-spec and --config. Additive
+# only: no change to build_parser() or main().
+
+def _every_flag_argv(mission: str, tmp_path, script) -> list[str]:
+    return [
+        "compose", mission,
+        "--cycles", "12",
+        "--repo", "belarusian/fourseer",
+        "--seed", "/home/sasha/Research/four",
+        "--seed-spec", '{"run.py": "run.py", "README.md": "README.md"}',
+        "--spoke", "cycle-implementation",
+        "--name", "fourseer",
+        "--project-dir", str(tmp_path),
+        "--ai-dir", str(tmp_path / "ai"),
+        "--cycle", "7",
+        "--run-py", "/home/sasha/Research/four/run.py",
+        "--config", "single-llm-long-pass",
+        "--script-path", str(script),
+        "--write",
+        "--validate",
+    ]
+
+
+def test_cli_every_flag_combined_write_validate_bash_n(tmp_path, capsys):
+    script = tmp_path / "launch-fourseer.sh"
+    rc = main(_every_flag_argv("Build fourseer.", tmp_path, script))
+    assert rc == 0
+    assert script.exists()
+    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    out = capsys.readouterr().out
+    for header in FIVE_HEADERS:
+        assert header in out
+    # --config single-llm-long-pass is reflected in the [3] BOUNDS section.
+    assert "outer wall (perl alarm): 10800s" in out
+
+
+def test_cli_every_flag_combined_deterministic_stdout(capsys, tmp_path):
+    script = tmp_path / "launch-fourseer.sh"
+    main(_every_flag_argv("Build fourseer.", tmp_path, script))
+    first = capsys.readouterr().out
+    main(_every_flag_argv("Build fourseer.", tmp_path, script))
+    second = capsys.readouterr().out
+    assert first == second

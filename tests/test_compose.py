@@ -271,3 +271,88 @@ def test_compose_seed_and_seed_spec_sections_stable():
     # The scaffold section reflects the classified spec (not the fixed builder).
     section = rendered.split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
     assert "[copy]" in section
+
+
+# --- TICKET-030 (issue #40): compose with EVERY flag combined end-to-end ------
+# The Build Order plan is complete; this pins the full composition path when all
+# opt-in axes (--seed-spec, --config) are active simultaneously, for BOTH spokes.
+# Additive only: no change to compose() or any public signature.
+
+_EVERY_FLAG_SEED_SPEC = {
+    "/home/sasha/Research/four/run.py": "run.py",   # copy (source != dest)
+    "README.md": "README.md",                        # reference (source == dest)
+}
+
+
+def _every_flag_kwargs(spoke: str, cycle: int) -> dict:
+    """Every compose() keyword argument set at once (the full flag surface)."""
+    return dict(
+        cycles=12,
+        repo="belarusian/fourseer",
+        seed="/home/sasha/Research/four",
+        seed_spec=dict(_EVERY_FLAG_SEED_SPEC),
+        spoke=spoke,
+        name="fourseer",
+        project_dir="/home/sasha/AI/fourseer/proj",
+        ai_dir="/home/sasha/AI/fourseer/ai",
+        cycle=cycle,
+        run_py="/home/sasha/Research/four/run.py",
+        config="single-llm-long-pass",   # opt-in LLM-config bounds axis
+        validate=True,                    # fail-fast bash -n validation
+    )
+
+
+def _scaffold_section(doc: str) -> str:
+    return doc.split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+
+
+def test_compose_every_flag_combined_setup():
+    from mission_compiler.compose import validate_composed
+
+    launch = compose("Build fourseer.", **_every_flag_kwargs("project-setup", 1))
+    rendered = launch.render()
+    for header in (
+        "[1] GOAL",
+        "[2] INNER SPOKE COMMAND",
+        "[3] BOUNDS",
+        "[4] SEED SCAFFOLD",
+        "[5] NOHUP LAUNCH SCRIPT",
+    ):
+        assert header in rendered
+    # config wins over spoke-based bounds: single-llm-long-pass -> outer wall 10800s.
+    assert "outer wall (perl alarm): 10800s" in rendered
+    # scaffold reflects the classified mapping (copy + reference), not the fixed builder.
+    section = _scaffold_section(rendered)
+    assert "[copy]" in section
+    assert "[reference]" in section
+    # validate=True did not raise; re-validate explicitly to be sure it is valid bash.
+    validate_composed(launch)
+
+
+def test_compose_every_flag_combined_cycle():
+    from mission_compiler.compose import validate_composed
+
+    launch = compose("Run cycle 7.", **_every_flag_kwargs("cycle-implementation", 7))
+    rendered = launch.render()
+    for header in (
+        "[1] GOAL",
+        "[2] INNER SPOKE COMMAND",
+        "[3] BOUNDS",
+        "[4] SEED SCAFFOLD",
+        "[5] NOHUP LAUNCH SCRIPT",
+    ):
+        assert header in rendered
+    # config row still selected for the cycle spoke.
+    assert "outer wall (perl alarm): 10800s" in rendered
+    section = _scaffold_section(rendered)
+    assert "[copy]" in section
+    assert "[reference]" in section
+    validate_composed(launch)
+
+
+def test_compose_every_flag_combined_byte_identical():
+    for spoke, cycle in (("project-setup", 1), ("cycle-implementation", 7)):
+        a = compose("Build fourseer.", **_every_flag_kwargs(spoke, cycle))
+        b = compose("Build fourseer.", **_every_flag_kwargs(spoke, cycle))
+        assert a.render() == b.render()
+        assert a.launch_script == b.launch_script
