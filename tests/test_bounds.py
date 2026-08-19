@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from mission_compiler.bounds import BOUNDS_TABLE, Bounds, bounds_for
+from mission_compiler.bounds import (
+    BOUNDS_TABLE,
+    LLM_CONFIG_BOUNDS,
+    Bounds,
+    bounds_for,
+    bounds_for_config,
+)
 
 
 def test_bounds_table_has_both_spokes():
@@ -40,6 +46,58 @@ def test_unknown_spoke_raises():
 
 def test_bounds_fields_are_positive_ints():
     for b in BOUNDS_TABLE.values():
+        assert isinstance(b, Bounds)
+        assert b.outer_wall > 0
+        assert b.inner_seconds > 0
+        assert b.outer_steps > 0
+        assert b.inner_max_steps > 0
+
+
+# --- TICKET-004: additive LLM-config proven table -------------------------
+
+
+def test_llm_config_table_has_three_rows():
+    assert set(LLM_CONFIG_BOUNDS) == {
+        "2-llm-fast",
+        "single-llm-long-pass",
+        "setup",
+    }
+
+
+def test_2llm_fast_matches_proven_values():
+    b = bounds_for_config("2-llm-fast")
+    # Proven 2-LLM (fast+large) config: TS run, 28 cycles, zero timeouts.
+    assert b.outer_wall == 3600
+    assert b.inner_seconds == 3000
+    assert b.outer_steps == 40
+    assert b.inner_max_steps == 90
+
+
+def test_single_llm_long_pass_matches_proven_values():
+    b = bounds_for_config("single-llm-long-pass")
+    # Proven single-LLM config: Python v6, cycle 6 needed a full hour.
+    assert b.outer_wall == 10800
+    assert b.inner_seconds == 3000
+    assert b.outer_steps == 60
+    assert b.inner_max_steps == 90
+
+
+def test_setup_config_matches_proven_values():
+    b = bounds_for_config("setup")
+    # Proven setup config: fourseer + mission-compiler setups.
+    assert b.outer_wall == 7200
+    assert b.inner_seconds == 1500
+    assert b.outer_steps == 25
+    assert b.inner_max_steps == 60
+
+
+def test_bounds_for_config_unknown_raises():
+    with pytest.raises(ValueError, match="unknown LLM config"):
+        bounds_for_config("no-such-config")
+
+
+def test_llm_config_rows_are_positive_ints():
+    for b in LLM_CONFIG_BOUNDS.values():
         assert isinstance(b, Bounds)
         assert b.outer_wall > 0
         assert b.inner_seconds > 0
