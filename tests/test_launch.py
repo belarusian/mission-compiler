@@ -239,3 +239,124 @@ def test_e2e_nohup_references_correct_path_setup():
 def test_e2e_nohup_references_correct_path_cycle():
     script_path = "/p/launch-n.sh"
     _assert_nohup_references_path(script_path)
+
+
+# --- write_launch_script helper (TICKET-009) ----------------------------------
+# Additive helper: write a composed launch script to a path and return the nohup
+# command. Pins the exact-bytes / correct-nohup / bash -n / determinism contract in
+# one reusable, testable place (mirrors what the CLI --write branch does by hand).
+
+from mission_compiler.launch import write_launch_script  # noqa: E402
+
+
+def _helper_build(goal: str = "g") -> str:
+    return build_launch_script(
+        goal=goal, inner=_inner(), bounds=_bounds(), log="/a/log.md",
+        trajectories="/a/traj", project_dir="/p", name="n",
+    )
+
+
+def test_write_launch_script_writes_exact_bytes(tmp_path):
+    script = _helper_build()
+    target = tmp_path / "launch-n.sh"
+    write_launch_script(script, str(target))
+    on_disk = target.read_text(encoding="utf-8")
+    assert on_disk == script
+    # Byte-identical, not just equal-as-str.
+    assert on_disk.encode("utf-8") == script.encode("utf-8")
+
+
+def test_write_launch_script_returns_correct_nohup_command(tmp_path):
+    script = _helper_build()
+    target = tmp_path / "launch-n.sh"
+    cmd = write_launch_script(script, str(target))
+    assert cmd == build_nohup_command(str(target))
+    assert cmd.startswith(f"nohup bash {target}")
+    assert f"> {target}.out" in cmd
+    assert cmd.endswith("&")
+
+
+def test_write_launch_script_creates_parent_dirs(tmp_path):
+    script = _helper_build()
+    nested = tmp_path / "a" / "b" / "c" / "launch-n.sh"
+    write_launch_script(script, str(nested))
+    assert nested.exists()
+    assert nested.read_text(encoding="utf-8") == script
+
+
+def test_write_launch_script_written_file_passes_bash_n(tmp_path):
+    script = _helper_build()
+    target = tmp_path / "launch-n.sh"
+    write_launch_script(script, str(target))
+    result = subprocess.run(["bash", "-n", str(target)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_write_launch_script_is_deterministic(tmp_path):
+    script = _helper_build()
+    target = tmp_path / "launch-n.sh"
+    cmd1 = write_launch_script(script, str(target))
+    bytes1 = target.read_bytes()
+    cmd2 = write_launch_script(script, str(target))
+    bytes2 = target.read_bytes()
+    assert cmd1 == cmd2
+    assert bytes1 == bytes2
+
+
+# --- Edge-case hardening (TICKET-010) -----------------------------------------
+# Boundary cases of the single-quoted-heredoc embedding: empty goal, goal ending in
+# a newline, and a very long single-line goal. Each asserts byte-determinism AND
+# that the generated script passes `bash -n`.
+
+def _build(goal: str) -> str:
+    return build_launch_script(
+        goal=goal, inner=_inner(), bounds=_bounds(), log="/a/log.md",
+        trajectories="/a/traj", project_dir="/p", name="n",
+    )
+
+
+def _bash_n_ok(script: str) -> None:
+    fd, path = tempfile.mkstemp(prefix="mc-edge-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(script)
+        result = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+    finally:
+        os.unlink(path)
+
+
+def test_empty_goal_script_passes_bash_n_and_deterministic():
+    a = _build("")
+    b = _build("")
+    assert a == b
+    assert a.encode("utf-8") == b.encode("utf-8")
+    # An empty body must not swallow a delimiter: GOAL_EOF appears exactly twice.
+    assert a.count("GOAL_EOF") == 2
+    _bash_n_ok(a)
+
+
+def test_goal_ending_in_newline_preserved_and_bash_n():
+    goal = "line one\n"
+    a = _build(goal)
+    b = _build(goal)
+    assert a == b
+    assert a.encode("utf-8") == b.encode("utf-8")
+    # The exact goal bytes (trailing newline intact) appear verbatim.
+    assert goal in a
+    _bash_n_ok(a)
+
+
+def test_very_long_single_line_goal_preserved_and_bash_n():
+    # A single line (no newlines), >= 5000 chars, carrying quote/$/backtick bytes.
+    filler = "x" * 4980
+    goal = f'Start "q" \'s\' $HOME `id` {filler} End'
+    assert "\n" not in goal
+    assert len(goal) >= 5000
+    a = _build(goal)
+    b = _build(goal)
+    assert a == b
+    assert a.encode("utf-8") == b.encode("utf-8")
+    # No truncation, no wrapping: the exact goal bytes appear as one contiguous run.
+    assert goal in a
+    _bash_n_ok(a)

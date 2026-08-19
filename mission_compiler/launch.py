@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
 from .bounds import Bounds
 from .spoke_cmd import SpokeCommand
@@ -142,3 +143,26 @@ def validate_launch_script(script: str) -> None:
             os.unlink(path)
         except OSError:
             pass
+
+
+def write_launch_script(script: str, path: str) -> str:
+    """Write ``script`` to ``path`` (UTF-8, exact bytes) and return the nohup command.
+
+    Creates parent directories if needed. Returns ``build_nohup_command(path)`` so the
+    caller gets a ready-to-run background launch line for the file just written. The
+    function is a pure function of its inputs: identical ``(script, path)`` always writes
+    the same bytes and returns the same command. No timestamps or randomness are
+    introduced.
+
+    Args:
+        script: the full launch script text to write.
+        path: destination path for the ``.sh`` file.
+
+    Returns:
+        The nohup command string that launches ``path`` in the background.
+    """
+    target = Path(path)
+    if target.parent != Path(""):
+        target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(script, encoding="utf-8")
+    return build_nohup_command(path)
