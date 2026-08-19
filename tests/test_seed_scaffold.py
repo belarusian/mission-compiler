@@ -238,3 +238,60 @@ def test_classify_full_plan_byte_deterministic_mixed_spec():
         classify_seed_paths(spec) + classify_seed_paths(["c.py"], base_dir="/root")
     )
     assert r1 == r2
+
+
+# ---------------------------------------------------------------------------
+# Cycle 6, TICKET-015 (issue #19): remaining determinism/edge coverage.
+# ---------------------------------------------------------------------------
+
+
+def test_classify_absolute_source_with_base_dir():
+    # Source is absolute -> left untouched; relative dest gets the single-separator
+    # base_dir prefix.
+    entries = classify_seed_paths({"/abs/src/a.py": "out/a.py"}, base_dir="/root")
+    e = entries[0]
+    assert e.action == "copy"
+    assert e.source == "/abs/src/a.py"  # absolute source untouched
+    assert e.path == "/root/out/a.py"   # relative dest prefixed
+    assert "//" not in e.path
+
+
+def test_classify_create_no_extension_gets_file_note():
+    entries = classify_seed_paths(["data/raw"])
+    e = entries[0]
+    assert e.action == "create"
+    assert e.note == "file"  # no extension -> default note
+
+
+def test_classify_create_dotfile_gets_file_note():
+    # A dotfile like ".env" has no recognized extension -> deterministic "file" note.
+    entries = classify_seed_paths([".env"])
+    e = entries[0]
+    assert e.action == "create"
+    assert e.note == "file"
+
+
+def test_classify_create_dotfile_render():
+    rendered = render_seed_entries(classify_seed_paths([".env"]))
+    assert rendered == "  [create] .env - file"
+
+
+def test_classify_mixed_mapping_and_list_byte_identical():
+    # A mapping (reference/copy) composed with a list (create) renders byte-identically
+    # across two independent calls.
+    spec_map = {"/s/a.py": "/d/a.py", "/s/b.md": "/s/b.md"}
+    spec_list = ["c.py", ".env"]
+
+    def build():
+        return render_seed_entries(
+            classify_seed_paths(spec_map) + classify_seed_paths(spec_list, base_dir="/root")
+        )
+
+    r1 = build()
+    r2 = build()
+    assert r1 == r2
+    # all three actions present
+    assert "  [copy] /d/a.py <- /s/a.py" in r1.split("\n")
+    assert "  [reference] /s/b.md" in r1.split("\n")
+    assert "  [create] /root/c.py - python module" in r1.split("\n")
+    assert "  [create] /root/.env - file" in r1.split("\n")

@@ -25,7 +25,12 @@ from .launch import (
     build_nohup_command,
     validate_launch_script,
 )
-from .seed_scaffold import SeedScaffold, build_seed_scaffold
+from .seed_scaffold import (
+    ScaffoldItem,
+    SeedScaffold,
+    build_seed_scaffold,
+    classify_seed_paths,
+)
 from .spoke_cmd import SpokeCommand, build_cycle_command, build_setup_command
 
 #: The two supported spoke types.
@@ -86,12 +91,52 @@ class ComposedLaunch:
         return "\n".join(parts)
 
 
+def _build_scaffold(
+    *,
+    seed: str | None,
+    project_dir: str,
+    name: str,
+    ai_dir: str,
+    seed_spec: dict[str, str] | list[str] | None,
+) -> SeedScaffold:
+    """Build the scaffold plan for a launch.
+
+    When ``seed_spec`` is None this returns the fixed four-project scaffold from
+    :func:`build_seed_scaffold` (byte-identical to before the opt-in existed).
+    Otherwise it builds the plan from the general :func:`classify_seed_paths`
+    planner: each entry becomes a :class:`ScaffoldItem` whose ``note`` carries the
+    copy source (for ``copy``) or the create/reference note, and the rendered
+    section reflects the classified reference/create/copy entries.
+
+    Pure function of its inputs; deterministic.
+    """
+    if seed_spec is None:
+        return build_seed_scaffold(
+            seed=seed,
+            project_dir=project_dir,
+            name=name,
+            ai_dir=ai_dir,
+        )
+    entries = classify_seed_paths(seed_spec, base_dir=project_dir)
+    items: list[ScaffoldItem] = []
+    for e in entries:
+        if e.action == "copy":
+            note = f"copy from {e.source}"
+        elif e.action == "create":
+            note = e.note
+        else:  # reference
+            note = e.note
+        items.append(ScaffoldItem(action=e.action, path=e.path, note=note))
+    return SeedScaffold(seed_path=seed, items=items)
+
+
 def compose(
     mission: str,
     *,
     cycles: int = 12,
     repo: str | None = None,
     seed: str | None = None,
+    seed_spec: dict[str, str] | list[str] | None = None,
     spoke: str = "project-setup",
     name: str = DEFAULT_NAME,
     project_dir: str = DEFAULT_PROJECT_DIR,
@@ -107,6 +152,10 @@ def compose(
         cycles: planned cycle count (setup) / used to name artifacts.
         repo: optional GitHub ``owner/name``.
         seed: optional read-only reference project path.
+        seed_spec: optional explicit seed spec (a mapping ``{source: dest}`` or a
+            list of paths). When given, the scaffold plan is built from the general
+            ``classify_seed_paths`` planner instead of the fixed builder; when None
+            (the default) the behavior is byte-identical to before this param existed.
         spoke: ``project-setup`` or ``cycle-implementation``.
         name: project / package name.
         project_dir: project repository directory.
@@ -162,11 +211,12 @@ def compose(
             trajectories=trajectories,
         )
 
-    seed_scaffold = build_seed_scaffold(
+    seed_scaffold = _build_scaffold(
         seed=seed,
         project_dir=project_dir,
         name=name,
         ai_dir=ai_dir,
+        seed_spec=seed_spec,
     )
 
     script_path = f"{project_dir}/launch-{name}.sh"
