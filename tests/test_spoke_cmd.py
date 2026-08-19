@@ -165,3 +165,59 @@ def test_bounds_for_spoke_delegates_and_raises():
     )
     with pytest.raises(ValueError, match="unknown spoke"):
         bounds_for_spoke("no-such-spoke")
+
+
+# ---------------------------------------------------------------------------
+# Cycle 11, TICKET-028 (issue #37): _quote whitespace edge coverage.
+# Pins the full whitespace-character matrix and the empty / no-whitespace cases
+# so a regression in any branch is caught. Additive only; no source change.
+# ---------------------------------------------------------------------------
+
+
+def test_quote_tab_is_quoted():
+    from mission_compiler.spoke_cmd import _quote
+
+    assert _quote("a\tb") == '"a\tb"'
+
+
+def test_quote_leading_and_trailing_space_are_quoted():
+    from mission_compiler.spoke_cmd import _quote
+
+    assert _quote(" x") == '" x"'
+    assert _quote("x ") == '"x "'
+
+
+def test_quote_empty_token_is_empty():
+    from mission_compiler.spoke_cmd import _quote
+
+    assert _quote("") == ""
+
+
+def test_quote_no_whitespace_stays_bare():
+    from mission_compiler.spoke_cmd import _quote
+
+    assert _quote("abc") == "abc"
+
+
+def test_quote_embedded_double_without_whitespace_not_escaped():
+    # An embedded double quote with NO whitespace is not quoted and the quote is
+    # not escaped (escaping only happens inside a quoted token).
+    from mission_compiler.spoke_cmd import _quote
+
+    assert _quote('a"b') == 'a"b'
+
+
+def test_render_composes_quoted_and_bare_tokens():
+    # A goal with a tab is quoted; a name with no whitespace stays bare.
+    cmd = build_setup_command(
+        goal="a\tgoal",
+        name="n",
+        project_dir="/p",
+        ai_dir="/a",
+        cycles=1,
+        repo=None,
+        seed=None,
+    )
+    rendered = cmd.render()
+    assert '"a\tgoal"' in rendered
+    assert "--name n" in rendered  # bare, unquoted

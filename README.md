@@ -40,7 +40,7 @@ Both entry points are equivalent.
 | --cycles N | Planned cycle count. | 12 |
 | --repo OWNER/NAME | GitHub repo owner/name. | none |
 | --seed PATH | Read-only reference project path. | none |
-| --seed-spec SPEC | Explicit seed spec: JSON {source: dest} or a comma-separated path list. When given, the scaffold plan is built from the general classifier instead of the fixed builder. | none |
+| --seed-spec SPEC | Explicit seed spec: a JSON mapping {source: dest}, a JSON list of paths ["a.py", "b.md"], or a comma-separated path list. When given, the scaffold plan is built from the general classifier instead of the fixed builder. | none |
 | --spoke {project-setup,cycle-implementation} | Spoke type. | project-setup |
 | --name NAME | Project / package name. | mission-compiler |
 | --project-dir DIR | Project repository directory. | /home/sasha/AI/mission-compiler/proj |

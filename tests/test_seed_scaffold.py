@@ -295,3 +295,55 @@ def test_classify_mixed_mapping_and_list_byte_identical():
     assert "  [reference] /s/b.md" in r1.split("\n")
     assert "  [create] /root/c.py - python module" in r1.split("\n")
     assert "  [create] /root/.env - file" in r1.split("\n")
+
+
+# ---------------------------------------------------------------------------
+# Cycle 11, TICKET-029 (issue #38): classify_seed_paths base_dir resolution edges.
+# Pins trailing-slash base_dir, the reference-vs-copy decision for a relative
+# source==dest with a base_dir present, and empty base_dir leaving paths untouched.
+# Additive only; no source change.
+# ---------------------------------------------------------------------------
+
+
+def test_classify_base_dir_trailing_slash_single_separator():
+    entries = classify_seed_paths(["a.py"], base_dir="/root/")
+    assert entries[0].path == "/root/a.py"
+    assert "//" not in entries[0].path
+
+
+def test_classify_relative_source_equals_dest_is_reference_with_base_dir():
+    # source == dest on the RAW strings, so it classifies as reference even though
+    # the resolved dest is prefixed with base_dir.
+    entries = classify_seed_paths({"rel.md": "rel.md"}, base_dir="/root")
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.action == "reference"
+    assert e.path == "/root/rel.md"
+    assert e.source is None
+
+
+def test_classify_empty_base_dir_leaves_list_paths_untouched():
+    entries = classify_seed_paths(["a.py"], base_dir="")
+    assert entries[0].path == "a.py"
+
+
+def test_classify_empty_base_dir_mapping_source_dest_untouched():
+    entries = classify_seed_paths({"s.py": "d.py"}, base_dir="")
+    e = entries[0]
+    assert e.action == "copy"
+    assert e.source == "s.py"
+    assert e.path == "d.py"
+
+
+def test_classify_base_dir_edges_byte_deterministic():
+    specs = (
+        classify_seed_paths(["a.py"], base_dir="/root/"),
+        classify_seed_paths({"rel.md": "rel.md"}, base_dir="/root"),
+        classify_seed_paths(["a.py"], base_dir=""),
+        classify_seed_paths({"s.py": "d.py"}, base_dir=""),
+    )
+
+    def build():
+        return "\n".join(render_seed_entries(s) for s in specs)
+
+    assert build() == build()

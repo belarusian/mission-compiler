@@ -104,8 +104,10 @@ def test_parse_seed_spec_json_non_object_raises():
 
     from mission_compiler.cli import parse_seed_spec
 
-    with pytest.raises(ValueError, match="object"):
-        parse_seed_spec('["a", "b"]')
+    # A JSON list is now a valid seed-spec form (TICKET-027); the invalid case
+    # is a JSON object whose value is not a string.
+    with pytest.raises(ValueError, match="must be strings"):
+        parse_seed_spec('{"a": 1}')
 
 
 def test_cli_seed_spec_mapping_reflects_classified_entries(capsys):
@@ -223,16 +225,18 @@ def test_cli_validate_seed_spec_write_writes_bash_n_passing_script(tmp_path, cap
 
 
 def test_cli_bad_seed_spec_fails_fast(capsys):
+    # A JSON list is now a valid seed-spec form (TICKET-027); the fail-fast case
+    # is a JSON object whose value is not a string.
     rc = main(
         [
             "compose", "Build it.",
-            "--seed-spec", '["a", "b"]',
+            "--seed-spec", '{"a": 1}',
             "--validate",
         ]
     )
     assert rc != 0
     err = capsys.readouterr().err
-    assert "object" in err
+    assert "must be strings" in err
 
 
 def test_cli_invalid_write_path_fails_fast(tmp_path, capsys):
@@ -367,3 +371,55 @@ def test_cli_default_behavior_byte_identical(capsys):
     out = capsys.readouterr().out
     expected = compose("Build it.", spoke="project-setup").render()
     assert expected in out
+
+
+# ---------------------------------------------------------------------------
+# Cycle 11, TICKET-027 (issue #36): --seed-spec JSON list-form round-trip.
+# A value starting with '[' is the natural JSON spelling of a path list; it must
+# round-trip into the scaffold exactly like the comma-list form. Additive only.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_seed_spec_json_list_form():
+    from mission_compiler.cli import parse_seed_spec
+
+    assert parse_seed_spec('["a.py", "b.md"]') == ["a.py", "b.md"]
+
+
+def test_parse_seed_spec_json_list_strips_and_drops_empty():
+    from mission_compiler.cli import parse_seed_spec
+
+    # Whitespace-padded elements are stripped; empty-string tokens are dropped,
+    # mirroring the comma-list path.
+    assert parse_seed_spec('  [ "x.py" , "y.md" , "" ]  ') == ["x.py", "y.md"]
+
+
+def test_parse_seed_spec_json_empty_list():
+    from mission_compiler.cli import parse_seed_spec
+
+    assert parse_seed_spec("[]") == []
+
+
+def test_parse_seed_spec_json_list_non_string_raises():
+    import pytest
+
+    from mission_compiler.cli import parse_seed_spec
+
+    with pytest.raises(ValueError, match="seed-spec JSON list elements must be strings"):
+        parse_seed_spec("[1, 2]")
+
+
+def test_cli_seed_spec_json_list_reflects_create_entries(capsys):
+    # The CLI renders the [4] SEED SCAFFOLD section from a JSON-list seed spec,
+    # byte-identically across two runs.
+    args = ["compose", "Build it.", "--seed-spec", '["pkg/mod.py", "docs/README.md"]']
+    main(args)
+    first = capsys.readouterr().out
+    main(args)
+    second = capsys.readouterr().out
+    assert first == second
+    assert "[4] SEED SCAFFOLD" in first
+    # Both entries are classified as create with extension-derived notes.
+    assert "[create]" in first
+    assert "pkg/mod.py" in first
+    assert "docs/README.md" in first

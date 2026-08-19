@@ -72,13 +72,17 @@ def test_subprocess_compose_validate_flag():
 
 
 def test_subprocess_bad_seed_spec_fails_fast():
-    """A non-object JSON --seed-spec fails fast (non-zero exit, 'object' on stderr)."""
+    """An invalid JSON --seed-spec fails fast (non-zero exit, error on stderr).
+
+    A JSON list is now a valid seed-spec form (TICKET-027); the invalid case is a
+    JSON object whose value is not a string.
+    """
     result = _run_cli(
         "compose", "Build it.", "--spoke", "project-setup",
-        "--seed-spec", "[1, 2]",
+        "--seed-spec", '{"a": 1}',
     )
     assert result.returncode != 0
-    assert "object" in result.stderr
+    assert "must be strings" in result.stderr
 
 
 def test_parse_seed_spec_comma_list_round_trips_into_scaffold():
