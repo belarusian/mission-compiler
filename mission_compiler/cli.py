@@ -11,6 +11,7 @@ It is deterministic: the same arguments always produce the same output.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from .compose import SPOKES, compose
@@ -42,6 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     comp.add_argument(
         "--seed", default=None, help="Read-only reference project path (optional)."
+    )
+    comp.add_argument(
+        "--seed-spec",
+        default=None,
+        help=(
+            "Explicit seed spec: a JSON mapping {source: dest} or a "
+            "comma-separated path list. When given, the scaffold plan is built "
+            "from the general classifier instead of the fixed builder."
+        ),
     )
     comp.add_argument(
         "--spoke",
@@ -88,6 +98,33 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def parse_seed_spec(value: str) -> dict[str, str] | list[str]:
+    """Parse a ``--seed-spec`` value into a seed spec.
+
+    A value starting with ``{`` is parsed as JSON and must be a mapping of
+    string to string (returns ``dict[str, str]``). Any other value is treated as
+    a comma-separated path list: split on commas, strip surrounding whitespace,
+    drop empty tokens (returns ``list[str]``).
+
+    Raises:
+        ValueError: if the JSON value is not an object, or any key/value is not a
+            string.
+    """
+    stripped = value.strip()
+    if stripped.startswith("{") or stripped.startswith("["):
+        data = json.loads(stripped)
+        if not isinstance(data, dict):
+            raise ValueError("seed-spec JSON must be an object {source: dest}")
+        out: dict[str, str] = {}
+        for k, v in data.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise ValueError("seed-spec JSON keys and values must be strings")
+            out[k] = v
+        return out
+    parts = [p.strip() for p in value.split(",")]
+    return [p for p in parts if p]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the mission-compiler CLI. Returns a process exit code."""
     parser = build_parser()
@@ -107,6 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         ai_dir=args.ai_dir,
         cycle=args.cycle,
         run_py=args.run_py,
+        seed_spec=parse_seed_spec(args.seed_spec) if args.seed_spec is not None else None,
     )
 
     print(launch.render())

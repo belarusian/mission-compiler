@@ -132,3 +132,72 @@ def base_scaffold():
     from mission_compiler.seed_scaffold import build_seed_scaffold
 
     return build_seed_scaffold(seed=None, project_dir="/p", name="n", ai_dir="/a")
+
+
+# ---------------------------------------------------------------------------
+# Cycle 6, TICKET-013 (issue #17): opt-in seed_spec wiring into compose.
+# ---------------------------------------------------------------------------
+
+
+def test_compose_seed_spec_none_is_byte_identical_to_fixed():
+    from mission_compiler.seed_scaffold import build_seed_scaffold
+
+    base = compose("Build it.", cycles=5, repo="o/r", seed="/s", spoke="project-setup")
+    explicit = compose(
+        "Build it.", cycles=5, repo="o/r", seed="/s",
+        spoke="project-setup", seed_spec=None,
+    )
+    # explicit None must be indistinguishable from omitting the flag
+    assert base.render() == explicit.render()
+    assert base.seed_scaffold.render() == explicit.seed_scaffold.render()
+    # and it must equal the fixed builder output for the default paths
+    fixed = build_seed_scaffold(
+        seed="/s",
+        project_dir="/home/sasha/AI/mission-compiler/proj",
+        name="mission-compiler",
+        ai_dir="/home/sasha/AI/mission-compiler/ai",
+    )
+    assert base.seed_scaffold.render() == fixed.render()
+
+
+def test_compose_seed_spec_mapping_reflects_classified_entries():
+    launch = compose(
+        "Build it.", cycles=5, repo="o/r", seed="/s", spoke="project-setup",
+        seed_spec={"/s/a.py": "/d/a.py", "/s/b.md": "/s/b.md"},
+    )
+    doc = launch.render()
+    section = doc.split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    # copy line (dest <- source) and reference line both present
+    assert "[copy] /d/a.py" in section
+    assert "/s/a.py" in section
+    assert "[reference] /s/b.md" in section
+
+
+def test_compose_seed_spec_list_reflects_create_entries():
+    launch = compose(
+        "Build it.", cycles=5, repo="o/r", seed="/s", spoke="project-setup",
+        seed_spec=["pkg/mod.py", "docs/README.md"],
+    )
+    section = launch.render().split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    assert "[create]" in section
+    assert "python module" in section
+    assert "markdown doc" in section
+
+
+def test_compose_seed_spec_deterministic():
+    a = compose("Build it.", seed="/s", spoke="project-setup",
+                seed_spec={"/s/a.py": "/d/a.py"})
+    b = compose("Build it.", seed="/s", spoke="project-setup",
+                seed_spec={"/s/a.py": "/d/a.py"})
+    assert a.render() == b.render()
+    assert a.seed_scaffold.render() == b.seed_scaffold.render()
+
+
+def test_compose_seed_spec_default_unchanged_vs_explicit_none():
+    base = compose("Build it.", cycles=5, repo="o/r", seed="/s", spoke="project-setup")
+    explicit = compose(
+        "Build it.", cycles=5, repo="o/r", seed="/s",
+        spoke="project-setup", seed_spec=None,
+    )
+    assert base.launch_script == explicit.launch_script
+    assert base.render() == explicit.render()
