@@ -201,3 +201,73 @@ def test_compose_seed_spec_default_unchanged_vs_explicit_none():
     )
     assert base.launch_script == explicit.launch_script
     assert base.render() == explicit.render()
+
+
+# ---------------------------------------------------------------------------
+# Cycle 7, TICKET-017 (issue #22): compose hardening — validate=True with a
+# non-None seed_spec still passes bash -n; five sections byte-deterministic
+# when both seed and seed_spec are supplied.
+# ---------------------------------------------------------------------------
+
+
+def test_compose_validate_true_with_mapping_seed_spec_passes_bash_n():
+    launch = compose(
+        "Build it.",
+        seed="/s",
+        seed_spec={"/s/a.py": "/d/a.py"},
+        spoke="project-setup",
+        validate=True,
+    )
+    # No raise means bash -n passed. The scaffold reflects the classified spec.
+    section = launch.render().split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    assert "[copy]" in section
+
+
+def test_compose_validate_true_with_list_seed_spec_passes_bash_n():
+    launch = compose(
+        "Build it.",
+        seed="/s",
+        seed_spec=["pkg/mod.py"],
+        spoke="project-setup",
+        validate=True,
+    )
+    section = launch.render().split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    assert "[create]" in section
+
+
+def test_compose_seed_and_seed_spec_together_byte_deterministic():
+    a = compose(
+        "Build it.",
+        seed="/s",
+        seed_spec={"/s/a.py": "/d/a.py"},
+        spoke="project-setup",
+    )
+    b = compose(
+        "Build it.",
+        seed="/s",
+        seed_spec={"/s/a.py": "/d/a.py"},
+        spoke="project-setup",
+    )
+    assert a.render() == b.render()
+
+
+def test_compose_seed_and_seed_spec_sections_stable():
+    launch = compose(
+        "Build it.",
+        seed="/s",
+        seed_spec={"/s/a.py": "/d/a.py"},
+        spoke="project-setup",
+    )
+    rendered = launch.render()
+    # All five section headers present and stable.
+    for header in (
+        "[1] GOAL",
+        "[2] INNER SPOKE COMMAND",
+        "[3] BOUNDS",
+        "[4] SEED SCAFFOLD",
+        "[5] NOHUP LAUNCH SCRIPT",
+    ):
+        assert header in rendered
+    # The scaffold section reflects the classified spec (not the fixed builder).
+    section = rendered.split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    assert "[copy]" in section

@@ -157,3 +157,104 @@ def test_cli_no_seed_spec_unchanged(capsys):
     out = capsys.readouterr().out
     expected = compose("Build it.", spoke="project-setup").render()
     assert expected in out
+
+
+# ---------------------------------------------------------------------------
+# Cycle 7, TICKET-016 (issue #21): additive --validate flag + end-to-end
+# --write/--script-path with --seed-spec.
+# ---------------------------------------------------------------------------
+
+
+def test_parser_validate_defaults_false():
+    args = build_parser().parse_args(["compose", "Build it."])
+    assert args.validate is False
+
+
+def test_cli_validate_valid_launch_returns_zero(capsys):
+    rc = main(["compose", "Build it.", "--validate"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[1] GOAL" in out
+    assert "[5] NOHUP LAUNCH SCRIPT" in out
+
+
+def test_cli_validate_write_writes_bash_n_passing_script(tmp_path, capsys):
+    import subprocess
+
+    script = tmp_path / "launch.sh"
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--project-dir", str(tmp_path),
+            "--script-path", str(script),
+            "--write",
+            "--validate",
+        ]
+    )
+    assert rc == 0
+    assert script.exists()
+    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0
+    capsys.readouterr()
+
+
+def test_cli_validate_seed_spec_write_writes_bash_n_passing_script(tmp_path, capsys):
+    import subprocess
+
+    script = tmp_path / "launch.sh"
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--project-dir", str(tmp_path),
+            "--script-path", str(script),
+            "--seed-spec", '{"a.py": "/d/a.py", "ref.md": "ref.md"}',
+            "--write",
+            "--validate",
+        ]
+    )
+    assert rc == 0
+    assert script.exists()
+    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0
+    # The written scaffold reflects the classified spec.
+    out = capsys.readouterr().out
+    section = out.split("[4] SEED SCAFFOLD")[1].split("[5] NOHUP LAUNCH SCRIPT")[0]
+    assert "[copy] /d/a.py" in section
+
+
+def test_cli_bad_seed_spec_fails_fast(capsys):
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--seed-spec", '["a", "b"]',
+            "--validate",
+        ]
+    )
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "object" in err
+
+
+def test_cli_invalid_write_path_fails_fast(tmp_path, capsys):
+    bad_dir = tmp_path / "does-not-exist"
+    script = bad_dir / "launch.sh"
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--script-path", str(script),
+            "--write",
+            "--validate",
+        ]
+    )
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "could not write" in err
+
+
+def test_cli_no_validate_output_byte_identical_to_plain(capsys):
+    from mission_compiler.compose import compose
+
+    main(["compose", "Build it.", "--spoke", "project-setup"])
+    out = capsys.readouterr().out
+    expected = compose("Build it.", spoke="project-setup").render()
+    assert expected in out
