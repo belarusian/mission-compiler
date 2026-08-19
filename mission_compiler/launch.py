@@ -17,6 +17,10 @@ the goal text are preserved literally and the script is always valid bash.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
+
 from .bounds import Bounds
 from .spoke_cmd import SpokeCommand
 
@@ -101,3 +105,40 @@ echo "========== {name} launch done =========="
 def build_nohup_command(script_path: str) -> str:
     """Return the ``nohup`` command that launches the script in the background."""
     return f"nohup bash {script_path} > {script_path}.out 2>&1 &"
+
+
+def validate_launch_script(script: str) -> None:
+    """Validate that ``script`` is syntactically valid bash via ``bash -n``.
+
+    Writes ``script`` to a temporary file, runs ``bash -n <path>`` (syntax check
+    only - no execution), and removes the temp file in a ``finally`` block. This
+    enforces the mission invariant "every generated launch script must pass
+    ``bash -n``" as a first-class, testable operation rather than an ad-hoc hand
+    check.
+
+    The return value is a pure function of ``script``: identical input always
+    yields the same outcome (None on success, ValueError on failure). No
+    timestamps or randomness are introduced.
+
+    Args:
+        script: the full launch script text to validate.
+
+    Raises:
+        ValueError: if ``bash -n`` reports a syntax error; the message contains
+            "bash -n" and the stderr fragment from bash.
+    """
+    fd, path = tempfile.mkstemp(prefix="mc-launch-", suffix=".sh")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(script)
+        result = subprocess.run(
+            ["bash", "-n", path], capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            raise ValueError(f"launch script failed bash -n: {stderr}")
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
