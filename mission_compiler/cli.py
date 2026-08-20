@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--repo", default=None, help="GitHub repo owner/name (optional)."
     )
     comp.add_argument(
+        "--private",
+        action="store_true",
+        help="Create the GitHub repo private (default: public).",
+    )
+    comp.add_argument(
         "--seed", default=None, help="Read-only reference project path (optional)."
     )
     comp.add_argument(
@@ -167,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             args.mission,
             cycles=args.cycles,
             repo=args.repo,
+            private=args.private,
             seed=args.seed,
             spoke=args.spoke,
             name=args.name,

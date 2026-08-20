@@ -356,3 +356,43 @@ def test_compose_every_flag_combined_byte_identical():
         b = compose("Build fourseer.", **_every_flag_kwargs(spoke, cycle))
         assert a.render() == b.render()
         assert a.launch_script == b.launch_script
+
+
+def test_compose_private_end_to_end():
+    """TICKET-033: compose(repo, private=True) threads --private + GOAL marker."""
+    launch = compose(
+        "Build the mission compiler.",
+        cycles=12,
+        repo="o/n",
+        private=True,
+        spoke="project-setup",
+    )
+    argv = launch.inner.argv
+    assert "--private" in argv
+    i = argv.index("o/n")
+    assert argv[i + 1] == "--private"
+    assert "GitHub repo: o/n (private)" in launch.goal
+
+
+def test_compose_without_private_byte_identical():
+    """TICKET-033 regression pin: no --private anywhere, no (private) marker."""
+    launch = compose(
+        "Build the mission compiler.",
+        cycles=12,
+        repo="o/n",
+        seed="/home/sasha/Research/four",
+        spoke="project-setup",
+    )
+    assert "--private" not in launch.inner.argv
+    assert "(private)" not in launch.goal
+    # The public repo line is unchanged.
+    assert "GitHub repo: o/n" in launch.goal
+    # Deterministic: a second identical call renders byte-identically.
+    again = compose(
+        "Build the mission compiler.",
+        cycles=12,
+        repo="o/n",
+        seed="/home/sasha/Research/four",
+        spoke="project-setup",
+    )
+    assert launch.render() == again.render()
