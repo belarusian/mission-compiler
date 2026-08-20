@@ -135,6 +135,7 @@ def compose(
     *,
     cycles: int = 12,
     repo: str | None = None,
+    private: bool = False,
     seed: str | None = None,
     seed_spec: dict[str, str] | list[str] | None = None,
     spoke: str = "project-setup",
@@ -152,6 +153,10 @@ def compose(
         mission: free-text mission description.
         cycles: planned cycle count (setup) / used to name artifacts.
         repo: optional GitHub ``owner/name``.
+        private: when True (with ``repo`` set) the setup command gains a
+            ``--private`` flag and the GOAL repo line reads
+            ``GitHub repo: {repo} (private)``; when False (the default) the
+            output is byte-identical to before this param existed.
         seed: optional read-only reference project path.
         seed_spec: optional explicit seed spec (a mapping ``{source: dest}`` or a
             list of paths). When given, the scaffold plan is built from the general
@@ -194,6 +199,7 @@ def compose(
         project_dir=project_dir,
         ai_dir=ai_dir,
         name=name,
+        private=private,
     )
 
     log = f"{ai_dir}/cycle-001-{name}-gate.md"
@@ -208,6 +214,7 @@ def compose(
             cycles=cycles,
             repo=repo,
             seed=seed,
+            private=private,
         )
     else:
         runner_prompt = f"{ai_dir}/{name}-cycle-runner-prompt.md"

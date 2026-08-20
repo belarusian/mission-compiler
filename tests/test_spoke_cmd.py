@@ -221,3 +221,56 @@ def test_render_composes_quoted_and_bare_tokens():
     rendered = cmd.render()
     assert '"a\tgoal"' in rendered
     assert "--name n" in rendered  # bare, unquoted
+
+
+def test_setup_command_private():
+    """TICKET-033: --private appears immediately after the repo token."""
+    cmd = build_setup_command(
+        goal="g",
+        name="n",
+        project_dir="/p",
+        ai_dir="/a",
+        cycles=3,
+        repo="o/n",
+        seed="/seed",
+        private=True,
+    )
+    argv = cmd.argv
+    assert "--private" in argv
+    # --private immediately after the "o/n" repo value.
+    i = argv.index("o/n")
+    assert argv[i + 1] == "--private"
+    # and before --seed.
+    assert argv.index("--private") < argv.index("--seed")
+
+
+def test_setup_command_private_false_byte_identical():
+    """TICKET-033: private=False (default) yields today's exact argv."""
+    base = dict(
+        goal="g",
+        name="n",
+        project_dir="/p",
+        ai_dir="/a",
+        cycles=3,
+        repo="o/n",
+        seed="/seed",
+    )
+    default_argv = build_setup_command(**base).argv
+    explicit_false_argv = build_setup_command(private=False, **base).argv
+    assert default_argv == explicit_false_argv
+    assert "--private" not in default_argv
+
+
+def test_setup_command_private_without_repo_is_noop():
+    """TICKET-033: private=True with repo=None emits no --private."""
+    cmd = build_setup_command(
+        goal="g",
+        name="n",
+        project_dir="/p",
+        ai_dir="/a",
+        cycles=3,
+        repo=None,
+        seed="/seed",
+        private=True,
+    )
+    assert "--private" not in cmd.argv

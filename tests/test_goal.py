@@ -135,3 +135,22 @@ def test_goal_byte_identical_across_processes(tmp_path):
     # Sanity: the output is non-trivial and carries the deltas.
     for marker in _DELTA_MARKERS:
         assert marker.encode() in out_a
+
+
+def test_goal_repo_private_line():
+    """TICKET-033: repo+private -> 'GitHub repo: o/n (private)'."""
+    g = _goal(repo="o/n", private=True)
+    assert "GitHub repo: o/n (private)" in g
+
+
+def test_goal_repo_public_line_unchanged():
+    """TICKET-033: repo only (private=False) -> 'GitHub repo: o/n', no marker."""
+    g = _goal(repo="o/n", private=False)
+    assert "GitHub repo: o/n" in g
+    assert "(private)" not in g
+
+
+def test_goal_repo_none_private_no_line():
+    """TICKET-033: repo=None with private=True -> no GitHub repo line at all."""
+    g = _goal(repo=None, private=True)
+    assert "GitHub repo:" not in g

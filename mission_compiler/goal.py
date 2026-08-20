@@ -47,6 +47,7 @@ def compose_goal(
     project_dir: str,
     ai_dir: str,
     name: str,
+    private: bool = False,
 ) -> str:
     """Return the full GOAL text for a launch.
 
@@ -62,7 +63,13 @@ def compose_goal(
     parts.append(f"Project dir: {project_dir}")
     parts.append(f"AI dir: {ai_dir}")
     if repo:
-        parts.append(f"GitHub repo: {repo}")
+        # Additive: when both repo and private are set the repo line carries a
+        # (private) marker; otherwise it is byte-identical to before. No repo
+        # line at all when repo is None (regardless of private).
+        if private:
+            parts.append(f"GitHub repo: {repo} (private)")
+        else:
+            parts.append(f"GitHub repo: {repo}")
     if seed:
         parts.append(f"Seed (read-only reference, never copy files): {seed}")
     parts.append("")

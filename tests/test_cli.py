@@ -471,3 +471,21 @@ def test_cli_every_flag_combined_deterministic_stdout(capsys, tmp_path):
     main(_every_flag_argv("Build fourseer.", tmp_path, script))
     second = capsys.readouterr().out
     assert first == second
+
+
+def test_cli_private_roundtrip(capsys):
+    """TICKET-033: --repo o/n --private -> setup argv carries --private adjacent to repo."""
+    rc = main(["compose", "Build it.", "--repo", "o/n", "--private"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # The rendered inner spoke command line shows the adjacency.
+    assert "--repo o/n --private" in out
+
+
+def test_cli_without_private_has_no_flag(capsys):
+    """TICKET-033: without --private the setup argv has no --private token."""
+    rc = main(["compose", "Build it.", "--repo", "o/n"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "--repo o/n" in out
+    assert "--private" not in out

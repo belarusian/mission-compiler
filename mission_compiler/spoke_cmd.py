@@ -49,6 +49,7 @@ def build_setup_command(
     cycles: int,
     repo: str | None,
     seed: str | None,
+    private: bool = False,
     spoke_path: str = DEFAULT_SETUP_SPOKE,
 ) -> SpokeCommand:
     """Build the ``project-setup`` spoke command line (all args)."""
@@ -60,6 +61,11 @@ def build_setup_command(
     argv += ["--cycles", str(cycles)]
     if repo:
         argv += ["--repo", repo]
+        if private:
+            # Additive: emit --private immediately after the --repo addition,
+            # before --seed. When private is False (the default) argv is
+            # byte-identical to before this param existed.
+            argv += ["--private"]
     if seed:
         argv += ["--seed", seed]
     return SpokeCommand(argv)
