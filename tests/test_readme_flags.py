@@ -71,3 +71,11 @@ def test_readme_correct_defaults_present_verbatim():
         "/home/sasha/Research/four/run.py",
     ):
         assert value in text, f"README missing correct default {value!r}"
+
+
+def test_readme_private_default_matches_parser():
+    """TICKET-033: README documents --private; default cell matches parser (off)."""
+    args = build_parser().parse_args(["compose", "Build it."])
+    assert args.private is False
+    # The README row's Default cell must reflect the store_true off-state.
+    assert _readme_flag_default("--private") == "off (public)"

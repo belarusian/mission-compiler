@@ -39,6 +39,7 @@ Both entry points are equivalent.
 | mission (positional) | Free-text mission description. | required |
 | --cycles N | Planned cycle count. | 12 |
 | --repo OWNER/NAME | GitHub repo owner/name. | none |
+| --private | Create the GitHub repo private (with `--repo`; default public). Adds `--private` to the setup command and a `(private)` marker to the GOAL repo line. | off (public) |
 | --seed PATH | Read-only reference project path. | none |
 | --seed-spec SPEC | Explicit seed spec: a JSON mapping {source: dest}, a JSON list of paths ["a.py", "b.md"], or a comma-separated path list. When given, the scaffold plan is built from the general classifier instead of the fixed builder. | none |
 | --spoke {project-setup,cycle-implementation} | Spoke type. | project-setup |
