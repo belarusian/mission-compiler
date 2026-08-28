@@ -15,7 +15,7 @@ import json
 import sys
 
 from .compose import SPOKES, compose, validate_composed
-from .launch import validate_launch_script
+from .launch import validate_launch_script, write_launch_script
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -87,8 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     comp.add_argument(
         "--run-py",
-        default="/home/sasha/Research/four/run.py",
-        help="Path to the outer orchestrator (run.py).",
+        default="/home/sasha/Research/four/run-v3.py",
+        help="Path to the outer orchestrator (run-v3.py: explicit LLM request timeout).",
     )
     comp.add_argument(
         "--config",
@@ -182,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             run_py=args.run_py,
             config=args.config,
             seed_spec=parse_seed_spec(args.seed_spec) if args.seed_spec is not None else None,
+            script_path=args.script_path,
         )
     except ValueError as exc:
         # Fail fast on a bad --seed-spec (e.g. non-object JSON).
@@ -202,8 +203,11 @@ def main(argv: list[str] | None = None) -> int:
         validate_launch_script(launch.launch_script)
         script_path = args.script_path or f"{args.project_dir}/launch-{args.name}.sh"
         try:
-            with open(script_path, "w", encoding="utf-8") as fh:
-                fh.write(launch.launch_script)
+            # Cycle 14 (issue #44 / TICKET-034): write_launch_script creates
+            # missing parent directories (mkdir -p equivalent) - a composed
+            # launch for a NEW project always targets a dir that does not
+            # exist yet.
+            write_launch_script(launch.launch_script, script_path)
         except OSError as exc:
             print(f"error: could not write launch script to {script_path}: {exc}", file=sys.stderr)
             return 2

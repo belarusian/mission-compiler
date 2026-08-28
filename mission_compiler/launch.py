@@ -26,7 +26,53 @@ from .bounds import Bounds
 from .spoke_cmd import SpokeCommand
 
 #: Default path to the outer orchestrator.
-DEFAULT_RUN_PY = "/home/sasha/Research/four/run.py"
+#:
+#: Cycle 14 (issue #46 / TICKET-036): the v3 path is the current standard for
+#: new launches. ``run.py``/``run-v2.py`` are FROZEN legacy (JUNIOR-v2 §2 +
+#: hard rule 7). ``run-v3.py`` adds ONE line over run-v2.py: the LLM request
+#: now comes from ``four.chat_model_v2`` with an explicit litellm request
+#: timeout (env ``FIVE_REQUEST_TIMEOUT``, default 21600s) so the client never
+#: cancels long deep-model inferences mid-generation (scar: sentry cycle 8,
+#: 2026-08-25 - litellm's built-in ~600s default cancelled >10-min inferences
+#: client-side; stacked retries re-sent the full context ~30x until the
+#: external wall SIGTERMed the process mid-retry -> no trajectory).
+DEFAULT_RUN_PY = "/home/sasha/Research/four/run-v3.py"
+
+#: Endpoint pins per LLM-config kind (Cycle 14, issue #46 / TICKET-036).
+#: The generated launch script exports these so the composed launcher is
+#: self-contained (hardcoded, never inherits session env) - the proven shape
+#: of ~/AI/sentry/run-cycles-v3.sh (cycles 8-11 completed on it).
+#:
+#:   * ``dual-llm`` (the DEFAULT launcher kind): the standard config -
+#:     ``.157:8080`` fast-qwen + ``.161:8081`` qwen.
+#:   * ``single-llm``: pin ``.161:8080`` for BOTH roles.
+#:
+#: ``FIVE_REQUEST_TIMEOUT`` must stay >= the driver's outer wall (21600s >
+#: any current outer wall of 10800s) so the external wall stays the sole
+#: timekeeper.
+ENDPOINT_PINS: dict[str, dict[str, str]] = {
+    "dual-llm": {
+        "FIVE_BASE_URL": "http://192.168.1.157:8080/v1",
+        "FIVE_MODEL": "fast-qwen",
+        "FIVE_LARGE_URL": "http://192.168.1.161:8081/v1",
+        "FIVE_LARGE_MODEL": "qwen",
+        "FIVE_REQUEST_TIMEOUT": "21600",
+    },
+    "single-llm": {
+        "FIVE_BASE_URL": "http://192.168.1.161:8080/v1",
+        "FIVE_MODEL": "qwen",
+        "FIVE_LARGE_URL": "http://192.168.1.161:8080/v1",
+        "FIVE_LARGE_MODEL": "qwen",
+        "FIVE_REQUEST_TIMEOUT": "21600",
+    },
+}
+
+#: The two supported LLM-config kinds (same axis as spoke_cmd.CONFIG_KINDS).
+CONFIG_KINDS = ("dual-llm", "single-llm")
+
+#: The default launcher kind: dual (issue #46 - the default compose emits a
+#: dual-LLM launcher).
+DEFAULT_CONFIG_KIND = "dual-llm"
 
 
 def _perl_alarm(seconds: int, cmd: str) -> str:
@@ -50,6 +96,23 @@ def _heredoc(name: str, content: str) -> str:
     return f"{name}=$(cat <<'{name}_EOF'\n{content}\n{name}_EOF\n)"
 
 
+def _endpoint_export_block(config_kind: str) -> str:
+    """Render the ``export`` lines for the endpoint pins of ``config_kind``.
+
+    Pure function of ``config_kind``: deterministic line order (dict
+    insertion order), one ``export KEY=VALUE`` per line. Raises
+    ``ValueError`` for an unknown kind.
+    """
+    try:
+        pins = ENDPOINT_PINS[config_kind]
+    except KeyError:
+        known = ", ".join(sorted(ENDPOINT_PINS))
+        raise ValueError(
+            f"unknown config kind {config_kind!r}; known kinds: {known}"
+        ) from None
+    return "\n".join(f"export {k}={v}" for k, v in pins.items())
+
+
 def build_launch_script(
     *,
     goal: str,
@@ -60,16 +123,29 @@ def build_launch_script(
     project_dir: str,
     name: str,
     run_py: str = DEFAULT_RUN_PY,
+    config_kind: str = DEFAULT_CONFIG_KIND,
 ) -> str:
     """Return the full nohup launch script, ready to execute.
 
     The script:
       * sets ``set -uo pipefail``;
+      * exports the endpoint pins for the composed LLM-config kind
+        (additive, Cycle 14 / issue #46: default kind ``dual-llm`` pins the
+        standard ``.157:8080`` fast-qwen + ``.161:8081`` qwen config plus
+        ``FIVE_REQUEST_TIMEOUT=21600``; ``single-llm`` pins ``.161:8080`` for
+        both roles);
       * defines the GOAL and INNER variables via single-quoted heredocs;
       * runs the outer orchestrator wall-bounded by ``perl alarm``;
       * is launched with ``nohup ... &`` so it survives the terminal.
+
+    Args:
+        config_kind: additive (Cycle 14, issue #46) - the LLM-config kind
+            whose endpoint pins the script exports. Default
+            ``"dual-llm"`` (the default launcher kind). Unknown kinds raise
+            ``ValueError``.
     """
     inner_line = inner.render()
+    exports = _endpoint_export_block(config_kind)
     outer_cmd = (
         f"python3 {run_py} \\\n"
         f"  --goal \"$GOAL\" --inner \"$INNER\" --inner-seconds {bounds.inner_seconds} \\\n"
@@ -87,6 +163,9 @@ def build_launch_script(
 # Bounds (proven table): outer wall {bounds.outer_wall}s, inner {bounds.inner_seconds}s,
 #   outer-steps {bounds.outer_steps}, inner max-steps {bounds.inner_max_steps}.
 set -uo pipefail
+
+# Endpoint config ({config_kind}) - hardcoded, never inherit session env.
+{exports}
 
 PROJECT_DIR="{project_dir}"
 LOG="{log}"

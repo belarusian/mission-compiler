@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from mission_compiler.bounds import Bounds
 from mission_compiler.compose import compose
+from mission_compiler.launch import validate_launch_script
 
 
 def test_compose_setup_returns_all_five_sections():
@@ -396,3 +398,80 @@ def test_compose_without_private_byte_identical():
         spoke="project-setup",
     )
     assert launch.render() == again.render()
+
+
+# --- TICKET-035/036 (issues #45/#46): v3 defaults + kind routing ------------
+
+
+def test_fresh_compose_setup_no_knobs_is_v3_dual_proven():
+    # Acceptance test (issue #46): a fresh compose with NO knobs must emit
+    # run-v3.py + dual endpoint pins + the proven setup bounds.
+    launch = compose("Build it.")
+    assert "python3 /home/sasha/Research/four/run-v3.py" in launch.launch_script
+    assert "export FIVE_BASE_URL=http://192.168.1.157:8080/v1" in launch.launch_script
+    assert "export FIVE_MODEL=fast-qwen" in launch.launch_script
+    assert "export FIVE_LARGE_URL=http://192.168.1.161:8081/v1" in launch.launch_script
+    assert "export FIVE_LARGE_MODEL=qwen" in launch.launch_script
+    assert "export FIVE_REQUEST_TIMEOUT=21600" in launch.launch_script
+    # Proven setup row (issue #45): 7200/1500/25/60, NOT the legacy 1800 wall.
+    assert launch.bounds == Bounds(outer_wall=7200, inner_seconds=1500, outer_steps=25, inner_max_steps=60)
+    rendered = launch.render()
+    assert "outer wall (perl alarm): 7200s" in rendered
+    validate_launch_script(launch.launch_script)
+
+
+def test_fresh_compose_cycle_no_knobs_is_v3_dual_v4_spoke():
+    # Acceptance test (issue #46): default cycle compose -> dual kind ->
+    # cycle-implementation-v4.py inner spoke + 2-llm-fast bounds.
+    launch = compose("Build it.", spoke="cycle-implementation")
+    assert "python3 /home/sasha/Research/four/run-v3.py" in launch.launch_script
+    assert "cycle-implementation-v4.py" in launch.inner.render()
+    assert "export FIVE_BASE_URL=http://192.168.1.157:8080/v1" in launch.launch_script
+    assert launch.bounds == Bounds(outer_wall=3600, inner_seconds=3000, outer_steps=40, inner_max_steps=90)
+    validate_launch_script(launch.launch_script)
+
+
+def test_compose_single_llm_kind_routes_spoke_and_pins():
+    # Issue #46: the single-LLM kind (selectable via --config) -> v3 inner
+    # spoke + .161:8080 pins for both roles + the 10800 row.
+    launch = compose("Build it.", spoke="cycle-implementation", config="single-llm-long-pass")
+    assert "cycle-implementation-v3.py" in launch.inner.render()
+    assert "cycle-implementation-v4.py" not in launch.inner.render()
+    assert "export FIVE_BASE_URL=http://192.168.1.161:8080/v1" in launch.launch_script
+    assert "export FIVE_LARGE_URL=http://192.168.1.161:8080/v1" in launch.launch_script
+    assert "192.168.1.157" not in launch.launch_script
+    assert launch.bounds == Bounds(outer_wall=10800, inner_seconds=3000, outer_steps=60, inner_max_steps=90)
+    validate_launch_script(launch.launch_script)
+
+
+def test_compose_explicit_2llm_fast_stays_dual():
+    # An explicit dual config keeps the dual kind (v4 spoke + dual pins).
+    launch = compose("Build it.", spoke="cycle-implementation", config="2-llm-fast")
+    assert "cycle-implementation-v4.py" in launch.inner.render()
+    assert "export FIVE_BASE_URL=http://192.168.1.157:8080/v1" in launch.launch_script
+    assert launch.bounds == Bounds(outer_wall=3600, inner_seconds=3000, outer_steps=40, inner_max_steps=90)
+
+
+def test_compose_script_path_footer_honors_given_path():
+    # Issue #46 (cosmetic): the "Launch with:" footer honors --script-path.
+    launch = compose("Build it.", script_path="/tmp/newproj/launch-setup.sh")
+    assert launch.nohup_command == "nohup bash /tmp/newproj/launch-setup.sh > /tmp/newproj/launch-setup.sh.out 2>&1 &"
+    rendered = launch.render()
+    assert "Launch with:" in rendered
+    assert "nohup bash /tmp/newproj/launch-setup.sh" in rendered
+
+
+def test_compose_without_script_path_footer_byte_identical():
+    # Regression pin: no script_path -> the default footer.
+    launch = compose("Build it.")
+    assert launch.nohup_command == (
+        "nohup bash /home/sasha/AI/mission-compiler/proj/launch-mission-compiler.sh"
+        " > /home/sasha/AI/mission-compiler/proj/launch-mission-compiler.sh.out 2>&1 &"
+    )
+
+
+def test_fresh_compose_deterministic_byte_identical():
+    a = compose("Build it.", spoke="cycle-implementation")
+    b = compose("Build it.", spoke="cycle-implementation")
+    assert a.render() == b.render()
+    assert a.launch_script == b.launch_script

@@ -60,7 +60,8 @@ def test_readme_cycle_default_matches_parser():
 def test_readme_run_py_default_matches_parser():
     args = build_parser().parse_args(["compose", "Build it."])
     assert _readme_flag_default("--run-py") == str(args.run_py)
-    assert _readme_flag_default("--run-py") == "/home/sasha/Research/four/run.py"
+    # Cycle 14 (issue #46): the v3 path is the default outer orchestrator.
+    assert _readme_flag_default("--run-py") == "/home/sasha/Research/four/run-v3.py"
 
 
 def test_readme_correct_defaults_present_verbatim():
@@ -68,7 +69,7 @@ def test_readme_correct_defaults_present_verbatim():
     for value in (
         "/home/sasha/AI/mission-compiler/proj",
         "/home/sasha/AI/mission-compiler/ai",
-        "/home/sasha/Research/four/run.py",
+        "/home/sasha/Research/four/run-v3.py",
     ):
         assert value in text, f"README missing correct default {value!r}"
 

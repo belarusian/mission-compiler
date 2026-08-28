@@ -47,7 +47,7 @@ Both entry points are equivalent.
 | --project-dir DIR | Project repository directory. | /home/sasha/AI/mission-compiler/proj |
 | --ai-dir DIR | Directory for AI artifacts (log, runner prompt, briefing). | /home/sasha/AI/mission-compiler/ai |
 | --cycle N | Cycle number (used by the cycle-implementation spoke). | 1 |
-| --run-py PATH | Path to the outer orchestrator (run.py). | /home/sasha/Research/four/run.py |
+| --run-py PATH | Path to the outer orchestrator (run-v3.py: explicit LLM request timeout). | /home/sasha/Research/four/run-v3.py |
 | --config NAME | Select the proven-bounds row by LLM configuration instead of by spoke type (a key of `LLM_CONFIG_BOUNDS`: `2-llm-fast` / `single-llm-long-pass` / `setup`). | none (spoke-based) |
 | --script-path PATH | Where to write the launch script. | <project-dir>/launch-<name>.sh |
 | --write | Write the launch script to --script-path. | off (print only) |

@@ -239,20 +239,27 @@ def test_cli_bad_seed_spec_fails_fast(capsys):
     assert "must be strings" in err
 
 
-def test_cli_invalid_write_path_fails_fast(tmp_path, capsys):
-    bad_dir = tmp_path / "does-not-exist"
-    script = bad_dir / "launch.sh"
+def test_cli_write_creates_missing_parent_dirs(tmp_path, capsys):
+    # Cycle 14 (issue #44 / TICKET-034): --write must mkdir -p the parent of
+    # --script-path. A composed launch for a NEW project always targets a dir
+    # that does not exist yet - the common case, not an edge.
+    deep = tmp_path / "does-not-exist" / "nested" / "launch.sh"
     rc = main(
         [
             "compose", "Build it.",
-            "--script-path", str(script),
+            "--script-path", str(deep),
             "--write",
             "--validate",
         ]
     )
-    assert rc != 0
-    err = capsys.readouterr().err
-    assert "could not write" in err
+    assert rc == 0
+    assert deep.exists()
+    out = capsys.readouterr().out
+    assert f"[written] launch script -> {deep}" in out
+    # The written bytes are exactly the composed launch script.
+    from mission_compiler.compose import compose
+
+    assert deep.read_text(encoding="utf-8") == compose("Build it.").launch_script
 
 
 def test_cli_no_validate_output_byte_identical_to_plain(capsys):
@@ -489,3 +496,28 @@ def test_cli_without_private_has_no_flag(capsys):
     out = capsys.readouterr().out
     assert "--repo o/n" in out
     assert "--private" not in out
+
+
+# --- TICKET-036 (issue #46): footer honors --script-path --------------------
+
+
+def test_cli_footer_honors_script_path(tmp_path, capsys):
+    script = tmp_path / "launch.sh"
+    rc = main(
+        [
+            "compose", "Build it.",
+            "--script-path", str(script),
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Launch with:" in out
+    assert f"nohup bash {script}" in out
+    assert "launch-mission-compiler.sh" not in out
+
+
+def test_cli_default_run_py_is_v3(capsys):
+    rc = main(["compose", "Build it."])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "python3 /home/sasha/Research/four/run-v3.py" in out

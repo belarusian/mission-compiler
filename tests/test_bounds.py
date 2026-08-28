@@ -27,10 +27,20 @@ def test_cycle_bounds_match_proven_values():
     assert b.inner_max_steps == 90
 
 
-def test_setup_bounds_are_lighter():
+def test_setup_bounds_match_proven_setup_row():
+    # Cycle 14 (issue #45): the default setup row is the proven v4 setup row
+    # (7200/1500/25/60), NOT the legacy 1800s wall (a B1 violation by default:
+    # ~300s left for the whole outer protocol after one 1500s inner pass).
     b = bounds_for("project-setup")
-    assert b.outer_wall < bounds_for("cycle-implementation").outer_wall
-    assert b.inner_max_steps < bounds_for("cycle-implementation").inner_max_steps
+    assert b == Bounds(outer_wall=7200, inner_seconds=1500, outer_steps=25, inner_max_steps=60)
+
+
+def test_bounds_tables_agree_with_llm_config_rows():
+    # Cycle 14 (issue #45): the legacy per-spoke table and the proven
+    # LLM_CONFIG_BOUNDS table must agree row-for-row, so the default (no
+    # --config) path and the explicit --config path can never disagree.
+    assert bounds_for("project-setup") == LLM_CONFIG_BOUNDS["setup"]
+    assert bounds_for("cycle-implementation") == LLM_CONFIG_BOUNDS["2-llm-fast"]
 
 
 def test_bounds_is_frozen_dataclass():
@@ -103,3 +113,34 @@ def test_llm_config_rows_are_positive_ints():
         assert b.inner_seconds > 0
         assert b.outer_steps > 0
         assert b.inner_max_steps > 0
+
+
+# --- TICKET-035 (issue #45): default config routing ------------------------
+
+
+def test_default_config_for_setup_is_setup_row():
+    from mission_compiler.bounds import default_config_for
+
+    assert default_config_for("project-setup") == "setup"
+
+
+def test_default_config_for_cycle_is_dual_row():
+    from mission_compiler.bounds import default_config_for
+
+    # The default launcher kind is dual (issue #46), so the default cycle row
+    # is the proven 2-llm-fast row.
+    assert default_config_for("cycle-implementation") == "2-llm-fast"
+
+
+def test_default_config_for_unknown_spoke_raises():
+    from mission_compiler.bounds import default_config_for
+
+    with pytest.raises(ValueError, match="unknown spoke"):
+        default_config_for("no-such-spoke")
+
+
+def test_default_config_routing_equals_bounds_for():
+    from mission_compiler.bounds import default_config_for
+
+    for spoke in ("project-setup", "cycle-implementation"):
+        assert bounds_for_config(default_config_for(spoke)) == bounds_for(spoke)

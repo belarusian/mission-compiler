@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .bounds import Bounds, bounds_for, bounds_for_config
+from .bounds import Bounds, bounds_for_config, default_config_for
 from .goal import compose_goal
 from .launch import (
     build_launch_script,
@@ -40,7 +40,32 @@ SPOKES = ("project-setup", "cycle-implementation")
 DEFAULT_PROJECT_DIR = "/home/sasha/AI/mission-compiler/proj"
 DEFAULT_AI_DIR = "/home/sasha/AI/mission-compiler/ai"
 DEFAULT_NAME = "mission-compiler"
-DEFAULT_RUN_PY = "/home/sasha/Research/four/run.py"
+
+#: Cycle 14 (issue #46 / TICKET-036): the v3 path is the default outer
+#: orchestrator (see launch.DEFAULT_RUN_PY for the evidence).
+DEFAULT_RUN_PY = "/home/sasha/Research/four/run-v3.py"
+
+#: LLM-config kind per explicit ``--config`` name (Cycle 14, issue #46).
+#: The default (no ``--config``) launcher kind is DUAL; the single-LLM kind is
+#: selectable via ``--config single-llm-long-pass``. Bounds and the inner
+#: spoke lineage follow the same axis so [3] BOUNDS and the [5] endpoint pins
+#: never disagree.
+_CONFIG_KIND_BY_NAME: dict[str, str] = {
+    "single-llm-long-pass": "single-llm",
+}
+DEFAULT_CONFIG_KIND = "dual-llm"
+
+
+def _config_kind(config: str | None) -> str:
+    """Return the LLM-config kind for an explicit ``config`` (or the default).
+
+    ``None`` (no ``--config``) -> the default dual kind. An explicit config
+    maps through :data:`_CONFIG_KIND_BY_NAME`; any config not in the map
+    (e.g. ``2-llm-fast`` / ``setup``) stays dual.
+    """
+    if config is None:
+        return DEFAULT_CONFIG_KIND
+    return _CONFIG_KIND_BY_NAME.get(config, DEFAULT_CONFIG_KIND)
 
 
 @dataclass(frozen=True)
@@ -146,6 +171,7 @@ def compose(
     run_py: str = DEFAULT_RUN_PY,
     config: str | None = None,
     validate: bool = False,
+    script_path: str | None = None,
 ) -> ComposedLaunch:
     """Compose the complete launch invocation for ``mission``.
 
@@ -170,9 +196,18 @@ def compose(
         run_py: path to the outer orchestrator.
         config: optional LLM-config name (a key of ``LLM_CONFIG_BOUNDS``, e.g.
             ``2-llm-fast`` / ``single-llm-long-pass`` / ``setup``). When given, the
-            proven bounds are selected via ``bounds_for_config(config)`` instead of
-            by spoke type; when None (the default) the behavior is byte-identical to
-            before this param existed. An unknown config raises ``ValueError``.
+            proven bounds are selected via ``bounds_for_config(config)``; when None
+            (the default) the bounds route through the proven row for the spoke
+            (Cycle 14, issue #45: ``project-setup`` -> the ``setup`` row
+            7200/1500/25/60, ``cycle-implementation`` -> the dual ``2-llm-fast``
+            row 3600/3000/40/90). The config also selects the launcher kind
+            (issue #46): default dual, ``single-llm-long-pass`` single-LLM. An
+            unknown config raises ``ValueError``.
+        script_path: additive (Cycle 14, issue #46) - when given, the
+            ``nohup_command`` (and the rendered "Launch with:" footer) use this
+            path instead of the default ``<project-dir>/launch-<name>.sh``; when
+            None (the default) the output is byte-identical to before this param
+            existed.
         validate: when True, run ``validate_launch_script`` on the composed
             launch script before returning so an invalid script fails fast
             (raises ``ValueError``). When False (the default) the behavior is
@@ -185,11 +220,15 @@ def compose(
         raise ValueError(f"unknown spoke {spoke!r}; supported: {', '.join(SPOKES)}")
 
     if config is None:
-        bounds = bounds_for(spoke)
+        # Cycle 14 (issue #45): the default (no --config) path routes through
+        # the proven LLM_CONFIG_BOUNDS row for the spoke, so the default and
+        # explicit --config paths can never disagree.
+        bounds = bounds_for_config(default_config_for(spoke))
     else:
         # Opt-in: select the proven-bounds row by LLM configuration instead of
-        # by spoke type. Default (config=None) stays byte-identical to before.
+        # by spoke type.
         bounds = bounds_for_config(config)
+    kind = _config_kind(config)
     goal = compose_goal(
         mission,
         spoke=spoke,
@@ -227,6 +266,7 @@ def compose(
             max_steps=bounds.inner_max_steps,
             briefing=briefing,
             trajectories=trajectories,
+            config_kind=kind,
         )
 
     seed_scaffold = _build_scaffold(
@@ -237,7 +277,8 @@ def compose(
         seed_spec=seed_spec,
     )
 
-    script_path = f"{project_dir}/launch-{name}.sh"
+    if script_path is None:
+        script_path = f"{project_dir}/launch-{name}.sh"
     launch_script = build_launch_script(
         goal=goal,
         inner=inner,
@@ -247,6 +288,7 @@ def compose(
         project_dir=project_dir,
         name=name,
         run_py=run_py,
+        config_kind=kind,
     )
     nohup_command = build_nohup_command(script_path)
 

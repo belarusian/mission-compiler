@@ -9,10 +9,12 @@ import tempfile
 
 from mission_compiler.bounds import Bounds
 from mission_compiler.launch import (
+    DEFAULT_RUN_PY,
     build_launch_script,
     build_nohup_command,
     validate_launch_script,
 )
+from mission_compiler.spoke_cmd import SpokeCommand
 from mission_compiler.spoke_cmd import build_cycle_command, build_setup_command
 
 
@@ -501,3 +503,93 @@ def test_hostile_bytes_byte_identical_across_runs():
         "first line\nGOAL_EOF\nlast line",
     ):
         assert _build(goal) == _build(goal)
+
+
+# --- TICKET-036 (issue #46): v3 default + endpoint pins ---------------------
+
+
+def test_default_run_py_is_v3():
+    assert DEFAULT_RUN_PY == "/home/sasha/Research/four/run-v3.py"
+
+
+def test_default_script_uses_run_v3_and_dual_pins():
+    script = build_launch_script(
+        goal="Build it.",
+        inner=SpokeCommand(argv=["python3", "/spoke.py", "--goal", "x"]),
+        bounds=_bounds(),
+        log="/ai/log.md",
+        trajectories="/ai/traj",
+        project_dir="/proj",
+        name="demo",
+    )
+    assert "python3 /home/sasha/Research/four/run-v3.py" in script
+    assert "export FIVE_BASE_URL=http://192.168.1.157:8080/v1" in script
+    assert "export FIVE_MODEL=fast-qwen" in script
+    assert "export FIVE_LARGE_URL=http://192.168.1.161:8081/v1" in script
+    assert "export FIVE_LARGE_MODEL=qwen" in script
+    assert "export FIVE_REQUEST_TIMEOUT=21600" in script
+    validate_launch_script(script)
+
+
+def test_single_llm_script_pins_161_8080_both_roles():
+    script = build_launch_script(
+        goal="Build it.",
+        inner=SpokeCommand(argv=["python3", "/spoke.py", "--goal", "x"]),
+        bounds=_bounds(),
+        log="/ai/log.md",
+        trajectories="/ai/traj",
+        project_dir="/proj",
+        name="demo",
+        config_kind="single-llm",
+    )
+    assert "export FIVE_BASE_URL=http://192.168.1.161:8080/v1" in script
+    assert "export FIVE_MODEL=qwen" in script
+    assert "export FIVE_LARGE_URL=http://192.168.1.161:8080/v1" in script
+    assert "export FIVE_LARGE_MODEL=qwen" in script
+    assert "export FIVE_REQUEST_TIMEOUT=21600" in script
+    # The dual pins must NOT leak into the single-LLM script.
+    assert "192.168.1.157" not in script
+    assert "fast-qwen" not in script
+    validate_launch_script(script)
+
+
+def test_explicit_run_py_still_wins():
+    script = build_launch_script(
+        goal="Build it.",
+        inner=SpokeCommand(argv=["python3", "/spoke.py", "--goal", "x"]),
+        bounds=_bounds(),
+        log="/ai/log.md",
+        trajectories="/ai/traj",
+        project_dir="/proj",
+        name="demo",
+        run_py="/custom/run.py",
+    )
+    assert "python3 /custom/run.py" in script
+    assert "run-v3.py" not in script
+
+
+def test_unknown_config_kind_raises():
+    with pytest.raises(ValueError, match="unknown config kind"):
+        build_launch_script(
+            goal="Build it.",
+            inner=SpokeCommand(argv=["python3", "/spoke.py"]),
+            bounds=_bounds(),
+            log="/ai/log.md",
+            trajectories="/ai/traj",
+            project_dir="/proj",
+            name="demo",
+            config_kind="no-such-kind",
+        )
+
+
+def test_endpoint_pins_deterministic_order():
+    from mission_compiler.launch import ENDPOINT_PINS
+
+    pins = ENDPOINT_PINS["dual-llm"]
+    assert list(pins) == [
+        "FIVE_BASE_URL",
+        "FIVE_MODEL",
+        "FIVE_LARGE_URL",
+        "FIVE_LARGE_MODEL",
+        "FIVE_REQUEST_TIMEOUT",
+    ]

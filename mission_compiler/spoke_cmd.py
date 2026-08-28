@@ -21,6 +21,23 @@ from .bounds import Bounds
 DEFAULT_SETUP_SPOKE = "/home/sasha/Research/four/examples/spokes/project-setup.py"
 DEFAULT_CYCLE_SPOKE = "/home/sasha/Research/four/examples/spokes/cycle-implementation-v3.py"
 
+#: Inner-spoke lineage by LLM-config kind (Cycle 14, issue #46 / TICKET-036).
+#: The v3 path (run-v3.py + explicit LLM request timeout) pairs each launcher
+#: kind with its proven inner spoke: the dual/2-LLM explicit-timeout line is
+#: ``cycle-implementation-v4.py``; the single-LLM line is
+#: ``cycle-implementation-v3.py``. ``DEFAULT_CYCLE_SPOKE`` (v3) remains the
+#: byte-identical default for callers that do not pass ``config_kind``.
+DEFAULT_CYCLE_SPOKE_V4 = "/home/sasha/Research/four/examples/spokes/cycle-implementation-v4.py"
+
+#: The two supported LLM-config kinds for the cycle-implementation spoke.
+CONFIG_KINDS = ("dual-llm", "single-llm")
+
+#: Inner spoke path per config kind.
+_CYCLE_SPOKE_BY_KIND: dict[str, str] = {
+    "dual-llm": DEFAULT_CYCLE_SPOKE_V4,
+    "single-llm": DEFAULT_CYCLE_SPOKE,
+}
+
 
 @dataclass(frozen=True)
 class SpokeCommand:
@@ -81,8 +98,27 @@ def build_cycle_command(
     briefing: str | None = None,
     trajectories: str | None = None,
     spoke_path: str = DEFAULT_CYCLE_SPOKE,
+    config_kind: str = "single-llm",
 ) -> SpokeCommand:
-    """Build the ``cycle-implementation`` (v3) spoke command line (all args)."""
+    """Build the ``cycle-implementation`` spoke command line (all args).
+
+    Args:
+        config_kind: additive (Cycle 14, issue #46) - selects the inner-spoke
+            lineage for the composed launcher kind: ``"dual-llm"`` (the default
+            launcher kind) renders ``cycle-implementation-v4.py``;
+            ``"single-llm"`` renders ``cycle-implementation-v3.py`` (the
+            byte-identical default, so existing callers are unchanged). An
+            explicit ``spoke_path`` always wins over ``config_kind``.
+            Unknown kinds raise ``ValueError``.
+    """
+    if spoke_path == DEFAULT_CYCLE_SPOKE and config_kind != "single-llm":
+        try:
+            spoke_path = _CYCLE_SPOKE_BY_KIND[config_kind]
+        except KeyError:
+            known = ", ".join(sorted(_CYCLE_SPOKE_BY_KIND))
+            raise ValueError(
+                f"unknown config kind {config_kind!r}; known kinds: {known}"
+            ) from None
     argv: list[str] = ["python3", spoke_path]
     argv += ["--runner-prompt", runner_prompt]
     argv += ["--log", log]
