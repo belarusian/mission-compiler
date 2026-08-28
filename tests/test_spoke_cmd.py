@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from mission_compiler.bounds import bounds_for
 from mission_compiler.spoke_cmd import (
     DEFAULT_CYCLE_SPOKE,
+    DEFAULT_CYCLE_SPOKE_V4,
     DEFAULT_SETUP_SPOKE,
     bounds_for_spoke,
     build_cycle_command,
@@ -274,3 +277,71 @@ def test_setup_command_private_without_repo_is_noop():
         private=True,
     )
     assert "--private" not in cmd.argv
+
+
+# --- TICKET-036 (issue #46): inner-spoke v3/v4 lineage ---------------------
+
+
+def test_cycle_command_default_is_v3_byte_identical():
+    # Regression pin: no config_kind -> the v3 spoke (byte-identical to before
+    # the lineage existed).
+    cmd = build_cycle_command(
+        runner_prompt="/ai/rp.md",
+        log="/ai/log.md",
+        project_dir="/proj",
+        cycle=1,
+        max_steps=90,
+    )
+    assert cmd.argv[1] == DEFAULT_CYCLE_SPOKE
+    assert cmd.argv[1].endswith("cycle-implementation-v3.py")
+
+
+def test_cycle_command_dual_kind_uses_v4():
+    cmd = build_cycle_command(
+        runner_prompt="/ai/rp.md",
+        log="/ai/log.md",
+        project_dir="/proj",
+        cycle=1,
+        max_steps=90,
+        config_kind="dual-llm",
+    )
+    assert cmd.argv[1] == DEFAULT_CYCLE_SPOKE_V4
+    assert cmd.argv[1].endswith("cycle-implementation-v4.py")
+
+
+def test_cycle_command_single_kind_uses_v3():
+    cmd = build_cycle_command(
+        runner_prompt="/ai/rp.md",
+        log="/ai/log.md",
+        project_dir="/proj",
+        cycle=1,
+        max_steps=90,
+        config_kind="single-llm",
+    )
+    assert cmd.argv[1] == DEFAULT_CYCLE_SPOKE
+    assert cmd.argv[1].endswith("cycle-implementation-v3.py")
+
+
+def test_cycle_command_explicit_spoke_path_wins_over_kind():
+    cmd = build_cycle_command(
+        runner_prompt="/ai/rp.md",
+        log="/ai/log.md",
+        project_dir="/proj",
+        cycle=1,
+        max_steps=90,
+        spoke_path="/custom/spoke.py",
+        config_kind="dual-llm",
+    )
+    assert cmd.argv[1] == "/custom/spoke.py"
+
+
+def test_cycle_command_unknown_kind_raises():
+    with pytest.raises(ValueError, match="unknown config kind"):
+        build_cycle_command(
+            runner_prompt="/ai/rp.md",
+            log="/ai/log.md",
+            project_dir="/proj",
+            cycle=1,
+            max_steps=90,
+            config_kind="no-such-kind",
+        )
