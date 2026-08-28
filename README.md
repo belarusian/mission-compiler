@@ -55,6 +55,27 @@ Both entry points are equivalent.
 
 --write and --validate are **default-off**, so a plain compose is byte-identical to one that omits them.
 
+## Default launcher (v3)
+
+A fresh compose (no `--config` knob) emits a **dual-LLM** launcher on the
+**v3** outer orchestrator path:
+
+- **Outer orchestrator:** `run-v3.py` — adds an explicit LLM request timeout
+  via `four.chat_model_v2` (env `FIVE_REQUEST_TIMEOUT`, default 21600s) so the
+  client never cancels long deep-model inferences mid-generation.
+- **Endpoint pins (dual-LLM, the default):** the generated script exports
+  `FIVE_BASE_URL=http://192.168.1.157:8080/v1` (fast-qwen) and
+  `FIVE_LARGE_URL=http://192.168.1.161:8081/v1` (qwen) plus
+  `FIVE_REQUEST_TIMEOUT=21600`. These are hardcoded in the script (never
+  inherited from session env) — the proven shape of the sentry v3 pipeline.
+- **Single-LLM kind:** `--config single-llm-long-pass` switches the launcher
+  to the single-LLM kind, pinning `FIVE_BASE_URL=http://192.168.1.161:8080/v1`
+  for both roles (fast and large).
+- **Proven default bounds:** setup (project-setup spoke) uses
+  7200s outer wall / 1500s inner / 25 outer-steps / 60 inner max-steps;
+  cycle (cycle-implementation spoke, dual-LLM) uses
+  3600s / 3000s / 40 / 90.
+
 ## End-to-end example (copy-pasteable)
 
 Compose the real fourseer project end-to-end, write the launch script, validate it, and print the rendered launch:
