@@ -80,3 +80,30 @@ def test_readme_private_default_matches_parser():
     assert args.private is False
     # The README row's Default cell must reflect the store_true off-state.
     assert _readme_flag_default("--private") == "off (public)"
+
+
+def test_readme_mentions_v3_launcher():
+    """TICKET-037: README prose narrates the v3 default launcher."""
+    text = README.read_text(encoding='utf-8')
+    assert 'run-v3.py' in text, 'README missing run-v3.py in prose'
+    assert 'FIVE_REQUEST_TIMEOUT' in text, 'README missing FIVE_REQUEST_TIMEOUT in prose'
+
+
+def test_readme_mentions_dual_pins():
+    """TICKET-037: README prose mentions the dual-LLM endpoint pins."""
+    text = README.read_text(encoding='utf-8')
+    assert '192.168.1.157:8080' in text, 'README missing .157:8080 dual pin'
+    assert '192.168.1.161:8081' in text, 'README missing .161:8081 dual pin'
+
+
+def test_readme_mentions_single_llm_pin():
+    """TICKET-037: README prose mentions the single-LLM endpoint pin."""
+    text = README.read_text(encoding='utf-8')
+    assert '192.168.1.161:8080' in text, 'README missing .161:8080 single-LLM pin'
+
+
+def test_readme_mentions_proven_bounds():
+    """TICKET-037: README prose mentions the proven default bounds."""
+    text = README.read_text(encoding='utf-8')
+    assert '7200' in text, 'README missing setup outer wall 7200'
+    assert '3600' in text, 'README missing cycle outer wall 3600'
